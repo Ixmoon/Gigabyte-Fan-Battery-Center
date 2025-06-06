@@ -1,0 +1,525 @@
+{
+    "app_version": "1.0.0",
+    "language": "en",
+    "start_on_boot": false,
+    "window_geometry": null,
+    "active_profile_name": "Configuration 1",
+    "profiles": {
+        "Configuration 1": {
+            "cpu_fan_table": [
+                [
+                    50,
+                    0
+                ],
+                [
+                    60,
+                    15
+                ],
+                [
+                    70,
+                    25
+                ],
+                [
+                    80,
+                    40
+                ],
+                [
+                    85,
+                    60
+                ],
+                [
+                    90,
+                    80
+                ],
+                [
+                    95,
+                    100
+                ]
+            ],
+            "gpu_fan_table": [
+                [
+                    40,
+                    0
+                ],
+                [
+                    55,
+                    15
+                ],
+                [
+                    65,
+                    25
+                ],
+                [
+                    70,
+                    40
+                ],
+                [
+                    75,
+                    60
+                ],
+                [
+                    80,
+                    80
+                ],
+                [
+                    85,
+                    100
+                ]
+            ],
+            "fan_mode": "auto",
+            "fixed_fan_speed": 11,
+            "charge_policy": "custom",
+            "charge_threshold": 85,
+            "AUTO_MODE_CYCLE_DURATION_S": 3.0,
+            "GUI_UPDATE_INTERVAL_MS": 1000,
+            "FAN_ADJUSTMENT_INTERVAL_S": 1.5,
+            "FAN_HYSTERESIS_PERCENT": 5,
+            "MIN_ADJUSTMENT_STEP": 1,
+            "MAX_ADJUSTMENT_STEP": 5,
+            "CURVE_POINT_PICKER_RADIUS": 8.0,
+            "SPLINE_POINTS": 100,
+            "CPU_CURVE_COLOR": "#00AEEF",
+            "GPU_CURVE_COLOR": "#7AC143",
+            "POINT_COLOR_ACTIVE": "#FFFFFF",
+            "POINT_SIZE_ACTIVE": 7,
+            "CPU_TEMP_INDICATOR_COLOR": "#FF6347",
+            "GPU_TEMP_INDICATOR_COLOR": "#90EE90",
+            "CPU_SPEED_INDICATOR_COLOR": "#FFB3A7",
+            "GPU_SPEED_INDICATOR_COLOR": "#C1F0C1",
+            "LINE_WIDTH_ACTIVE": 2.0,
+            "LINE_WIDTH_INACTIVE": 1.0,
+            "ALPHA_ACTIVE": 1.0,
+            "ALPHA_INACTIVE": 0.4
+        },
+        "Configuration 2": {
+            "cpu_fan_table": [
+                [
+                    50,
+                    0
+                ],
+                [
+                    60,
+                    15
+                ],
+                [
+                    70,
+                    25
+                ],
+                [
+                    80,
+                    40
+                ],
+                [
+                    85,
+                    60
+                ],
+                [
+                    90,
+                    80
+                ],
+                [
+                    95,
+                    100
+                ]
+            ],
+            "gpu_fan_table": [
+                [
+                    40,
+                    0
+                ],
+                [
+                    55,
+                    15
+                ],
+                [
+                    65,
+                    25
+                ],
+                [
+                    70,
+                    40
+                ],
+                [
+                    75,
+                    60
+                ],
+                [
+                    80,
+                    80
+                ],
+                [
+                    85,
+                    100
+                ]
+            ],
+            "fan_mode": "auto",
+            "fixed_fan_speed": 30,
+            "charge_policy": "custom",
+            "charge_threshold": 80,
+            "AUTO_MODE_CYCLE_DURATION_S": 3.0,
+            "GUI_UPDATE_INTERVAL_MS": 1000,
+            "FAN_ADJUSTMENT_INTERVAL_S": 1.5,
+            "FAN_HYSTERESIS_PERCENT": 5,
+            "MIN_ADJUSTMENT_STEP": 1,
+            "MAX_ADJUSTMENT_STEP": 5,
+            "CURVE_POINT_PICKER_RADIUS": 8.0,
+            "SPLINE_POINTS": 100,
+            "CPU_CURVE_COLOR": "#00AEEF",
+            "GPU_CURVE_COLOR": "#7AC143",
+            "POINT_COLOR_ACTIVE": "#FFFFFF",
+            "POINT_SIZE_ACTIVE": 7,
+            "CPU_TEMP_INDICATOR_COLOR": "#FF6347",
+            "GPU_TEMP_INDICATOR_COLOR": "#90EE90",
+            "CPU_SPEED_INDICATOR_COLOR": "#FFB3A7",
+            "GPU_SPEED_INDICATOR_COLOR": "#C1F0C1",
+            "LINE_WIDTH_ACTIVE": 2.0,
+            "LINE_WIDTH_INACTIVE": 1.0,
+            "ALPHA_ACTIVE": 1.0,
+            "ALPHA_INACTIVE": 0.4
+        },
+        "Configuration 3": {
+            "cpu_fan_table": [
+                [
+                    50,
+                    0
+                ],
+                [
+                    60,
+                    15
+                ],
+                [
+                    70,
+                    25
+                ],
+                [
+                    80,
+                    40
+                ],
+                [
+                    85,
+                    60
+                ],
+                [
+                    90,
+                    80
+                ],
+                [
+                    95,
+                    100
+                ]
+            ],
+            "gpu_fan_table": [
+                [
+                    40,
+                    0
+                ],
+                [
+                    55,
+                    15
+                ],
+                [
+                    65,
+                    25
+                ],
+                [
+                    70,
+                    40
+                ],
+                [
+                    75,
+                    60
+                ],
+                [
+                    80,
+                    80
+                ],
+                [
+                    85,
+                    100
+                ]
+            ],
+            "fan_mode": "auto",
+            "fixed_fan_speed": 30,
+            "charge_policy": "custom",
+            "charge_threshold": 80,
+            "AUTO_MODE_CYCLE_DURATION_S": 3.0,
+            "GUI_UPDATE_INTERVAL_MS": 1000,
+            "FAN_ADJUSTMENT_INTERVAL_S": 1.5,
+            "FAN_HYSTERESIS_PERCENT": 5,
+            "MIN_ADJUSTMENT_STEP": 1,
+            "MAX_ADJUSTMENT_STEP": 5,
+            "CURVE_POINT_PICKER_RADIUS": 8.0,
+            "SPLINE_POINTS": 100,
+            "CPU_CURVE_COLOR": "#00AEEF",
+            "GPU_CURVE_COLOR": "#7AC143",
+            "POINT_COLOR_ACTIVE": "#FFFFFF",
+            "POINT_SIZE_ACTIVE": 7,
+            "CPU_TEMP_INDICATOR_COLOR": "#FF6347",
+            "GPU_TEMP_INDICATOR_COLOR": "#90EE90",
+            "CPU_SPEED_INDICATOR_COLOR": "#FFB3A7",
+            "GPU_SPEED_INDICATOR_COLOR": "#C1F0C1",
+            "LINE_WIDTH_ACTIVE": 2.0,
+            "LINE_WIDTH_INACTIVE": 1.0,
+            "ALPHA_ACTIVE": 1.0,
+            "ALPHA_INACTIVE": 0.4
+        },
+        "Configuration 4": {
+            "cpu_fan_table": [
+                [
+                    50,
+                    0
+                ],
+                [
+                    60,
+                    15
+                ],
+                [
+                    70,
+                    25
+                ],
+                [
+                    80,
+                    40
+                ],
+                [
+                    85,
+                    60
+                ],
+                [
+                    90,
+                    80
+                ],
+                [
+                    95,
+                    100
+                ]
+            ],
+            "gpu_fan_table": [
+                [
+                    40,
+                    0
+                ],
+                [
+                    55,
+                    15
+                ],
+                [
+                    65,
+                    25
+                ],
+                [
+                    70,
+                    40
+                ],
+                [
+                    75,
+                    60
+                ],
+                [
+                    80,
+                    80
+                ],
+                [
+                    85,
+                    100
+                ]
+            ],
+            "fan_mode": "auto",
+            "fixed_fan_speed": 30,
+            "charge_policy": "custom",
+            "charge_threshold": 80,
+            "AUTO_MODE_CYCLE_DURATION_S": 3.0,
+            "GUI_UPDATE_INTERVAL_MS": 1000,
+            "FAN_ADJUSTMENT_INTERVAL_S": 1.5,
+            "FAN_HYSTERESIS_PERCENT": 5,
+            "MIN_ADJUSTMENT_STEP": 1,
+            "MAX_ADJUSTMENT_STEP": 5,
+            "CURVE_POINT_PICKER_RADIUS": 8.0,
+            "SPLINE_POINTS": 100,
+            "CPU_CURVE_COLOR": "#00AEEF",
+            "GPU_CURVE_COLOR": "#7AC143",
+            "POINT_COLOR_ACTIVE": "#FFFFFF",
+            "POINT_SIZE_ACTIVE": 7,
+            "CPU_TEMP_INDICATOR_COLOR": "#FF6347",
+            "GPU_TEMP_INDICATOR_COLOR": "#90EE90",
+            "CPU_SPEED_INDICATOR_COLOR": "#FFB3A7",
+            "GPU_SPEED_INDICATOR_COLOR": "#C1F0C1",
+            "LINE_WIDTH_ACTIVE": 2.0,
+            "LINE_WIDTH_INACTIVE": 1.0,
+            "ALPHA_ACTIVE": 1.0,
+            "ALPHA_INACTIVE": 0.4
+        },
+        "Configuration 5": {
+            "cpu_fan_table": [
+                [
+                    50,
+                    0
+                ],
+                [
+                    60,
+                    15
+                ],
+                [
+                    70,
+                    25
+                ],
+                [
+                    80,
+                    40
+                ],
+                [
+                    85,
+                    60
+                ],
+                [
+                    90,
+                    80
+                ],
+                [
+                    95,
+                    100
+                ]
+            ],
+            "gpu_fan_table": [
+                [
+                    40,
+                    0
+                ],
+                [
+                    55,
+                    15
+                ],
+                [
+                    65,
+                    25
+                ],
+                [
+                    70,
+                    40
+                ],
+                [
+                    75,
+                    60
+                ],
+                [
+                    80,
+                    80
+                ],
+                [
+                    85,
+                    100
+                ]
+            ],
+            "fan_mode": "auto",
+            "fixed_fan_speed": 30,
+            "charge_policy": "custom",
+            "charge_threshold": 80,
+            "AUTO_MODE_CYCLE_DURATION_S": 3.0,
+            "GUI_UPDATE_INTERVAL_MS": 1000,
+            "FAN_ADJUSTMENT_INTERVAL_S": 1.5,
+            "FAN_HYSTERESIS_PERCENT": 5,
+            "MIN_ADJUSTMENT_STEP": 1,
+            "MAX_ADJUSTMENT_STEP": 5,
+            "CURVE_POINT_PICKER_RADIUS": 8.0,
+            "SPLINE_POINTS": 100,
+            "CPU_CURVE_COLOR": "#00AEEF",
+            "GPU_CURVE_COLOR": "#7AC143",
+            "POINT_COLOR_ACTIVE": "#FFFFFF",
+            "POINT_SIZE_ACTIVE": 7,
+            "CPU_TEMP_INDICATOR_COLOR": "#FF6347",
+            "GPU_TEMP_INDICATOR_COLOR": "#90EE90",
+            "CPU_SPEED_INDICATOR_COLOR": "#FFB3A7",
+            "GPU_SPEED_INDICATOR_COLOR": "#C1F0C1",
+            "LINE_WIDTH_ACTIVE": 2.0,
+            "LINE_WIDTH_INACTIVE": 1.0,
+            "ALPHA_ACTIVE": 1.0,
+            "ALPHA_INACTIVE": 0.4
+        },
+        "Configuration 6": {
+            "cpu_fan_table": [
+                [
+                    50,
+                    0
+                ],
+                [
+                    60,
+                    15
+                ],
+                [
+                    70,
+                    25
+                ],
+                [
+                    80,
+                    40
+                ],
+                [
+                    85,
+                    60
+                ],
+                [
+                    90,
+                    80
+                ],
+                [
+                    95,
+                    100
+                ]
+            ],
+            "gpu_fan_table": [
+                [
+                    40,
+                    0
+                ],
+                [
+                    55,
+                    15
+                ],
+                [
+                    65,
+                    25
+                ],
+                [
+                    70,
+                    40
+                ],
+                [
+                    75,
+                    60
+                ],
+                [
+                    80,
+                    80
+                ],
+                [
+                    85,
+                    100
+                ]
+            ],
+            "fan_mode": "auto",
+            "fixed_fan_speed": 30,
+            "charge_policy": "custom",
+            "charge_threshold": 80,
+            "AUTO_MODE_CYCLE_DURATION_S": 3.0,
+            "GUI_UPDATE_INTERVAL_MS": 1000,
+            "FAN_ADJUSTMENT_INTERVAL_S": 1.5,
+            "FAN_HYSTERESIS_PERCENT": 5,
+            "MIN_ADJUSTMENT_STEP": 1,
+            "MAX_ADJUSTMENT_STEP": 5,
+            "CURVE_POINT_PICKER_RADIUS": 8.0,
+            "SPLINE_POINTS": 100,
+            "CPU_CURVE_COLOR": "#00AEEF",
+            "GPU_CURVE_COLOR": "#7AC143",
+            "POINT_COLOR_ACTIVE": "#FFFFFF",
+            "POINT_SIZE_ACTIVE": 7,
+            "CPU_TEMP_INDICATOR_COLOR": "#FF6347",
+            "GPU_TEMP_INDICATOR_COLOR": "#90EE90",
+            "CPU_SPEED_INDICATOR_COLOR": "#FFB3A7",
+            "GPU_SPEED_INDICATOR_COLOR": "#C1F0C1",
+            "LINE_WIDTH_ACTIVE": 2.0,
+            "LINE_WIDTH_INACTIVE": 1.0,
+            "ALPHA_ACTIVE": 1.0,
+            "ALPHA_INACTIVE": 0.4
+        }
+    }
+}
