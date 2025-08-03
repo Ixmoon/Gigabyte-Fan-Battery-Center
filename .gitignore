@@ -1,0 +1,21 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# PyInstaller
+#  Usually these files are written by a script so they are not necessary
+#  to store in VCS
+*.spec
+build/
+dist/
+
+# Virtual Environments
+venv/
+venv_std/
+.venv/
+
+# IDE / Editor specific
+.idea/
+.vscode/

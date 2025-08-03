@@ -1,73 +1,73 @@
 {
     "app_version": "1.0.0",
     "language": "en",
-    "start_on_boot": false,
+    "start_on_boot": true,
     "window_geometry": null,
     "active_profile_name": "Configuration 1",
     "profiles": {
         "Configuration 1": {
             "cpu_fan_table": [
                 [
-                    50,
+                    72,
                     0
                 ],
                 [
-                    60,
-                    15
+                    77,
+                    9
                 ],
                 [
-                    70,
-                    25
+                    81,
+                    23
                 ],
                 [
-                    80,
-                    40
+                    83,
+                    38
                 ],
                 [
-                    85,
-                    60
+                    87,
+                    61
                 ],
                 [
-                    90,
-                    80
+                    93,
+                    87
                 ],
                 [
-                    95,
+                    100,
                     100
                 ]
             ],
             "gpu_fan_table": [
                 [
-                    40,
+                    70,
                     0
                 ],
                 [
-                    55,
-                    15
+                    74,
+                    24
                 ],
                 [
-                    65,
-                    25
-                ],
-                [
-                    70,
-                    40
-                ],
-                [
-                    75,
-                    60
+                    77,
+                    39
                 ],
                 [
                     80,
-                    80
+                    53
                 ],
                 [
-                    85,
+                    84,
+                    72
+                ],
+                [
+                    90,
+                    88
+                ],
+                [
+                    99,
                     100
                 ]
             ],
             "fan_mode": "auto",
-            "fixed_fan_speed": 11,
+            "fixed_fan_speed": 40,
             "charge_policy": "custom",
             "charge_threshold": 85,
             "AUTO_MODE_CYCLE_DURATION_S": 3.0,
