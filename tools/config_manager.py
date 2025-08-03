@@ -19,8 +19,7 @@ from config.settings import (
     MIN_CURVE_POINTS,
     MIN_TEMP_C, MAX_TEMP_C,
     MIN_FAN_PERCENT, MAX_FAN_PERCENT,
-    MIN_CHARGE_PERCENT, MAX_CHARGE_PERCENT,
-    MIN_POINTS_FOR_INTERPOLATION # Used in validation indirectly
+    MIN_CHARGE_PERCENT
 )
 # Import localization for default profile names and error messages
 from .localization import tr, get_available_languages, set_language, get_current_language

@@ -35,10 +35,7 @@ from tools.config_manager import ConfigManager, ProfileSettings
 from tools.localization import tr, get_available_languages, set_language, get_current_language # get_available_languages, get_current_language might be removed if SettingsPanel handles all
 from tools.task_scheduler import create_startup_task, delete_startup_task, is_startup_task_registered
 from config.settings import (
-    APP_NAME, NUM_PROFILES, APP_ICON_NAME,
-    TEMP_READ_ERROR_VALUE, RPM_READ_ERROR_VALUE,
-    CHARGE_POLICY_READ_ERROR_VALUE, CHARGE_THRESHOLD_READ_ERROR_VALUE,
-    INIT_APPLIED_PERCENTAGE, DEFAULT_PROFILE_SETTINGS
+    APP_NAME, APP_ICON_NAME, DEFAULT_PROFILE_SETTINGS
 )
 
 # --- MODIFICATION: Forward declare AppRunner for type hint ---

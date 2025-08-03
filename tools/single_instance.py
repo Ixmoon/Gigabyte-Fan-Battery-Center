@@ -30,7 +30,6 @@ if os.name == 'nt':
     try:
         import ctypes
         from ctypes import wintypes
-        import win32gui # Still useful for activation
         import win32con
 
         # Constants
