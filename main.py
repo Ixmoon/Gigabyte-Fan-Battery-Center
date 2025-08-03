@@ -35,7 +35,7 @@ from PyQt6.QtCore import QCoreApplication, QTimer, QMetaObject, Qt # Added QMeta
 
 from config.settings import (
     APP_NAME, APP_ORGANIZATION_NAME, APP_INTERNAL_NAME, STARTUP_ARG_MINIMIZED,
-    LANGUAGES_JSON_PATH, PREFERRED_FONTS
+    LANGUAGES_JSON_NAME, CONFIG_FILE_NAME, PREFERRED_FONTS
 )
 from tools.localization import load_translations, tr, DEFAULT_ENGLISH_TRANSLATIONS, DEFAULT_LANGUAGE, \
     _translations_loaded # Use internal flag name
@@ -150,27 +150,27 @@ def main():
     # 2. Register cleanup function (atexit is crucial for non-Qt exits)
     atexit.register(perform_cleanup)
 
-    # 3. Load translations early
-    load_translations(LANGUAGES_JSON_PATH)
+    # 3. Construct absolute paths
+    languages_json_path = os.path.join(BASE_DIR, LANGUAGES_JSON_NAME)
+
+    # 4. Load translations early
+    load_translations(languages_json_path)
 
     # 4. Check for Administrator Privileges (Windows only)
     if os.name == 'nt':
         if not is_admin():
-            run_as_admin() # Shows message, attempts elevation, exits if needed
+            run_as_admin(BASE_DIR) # Shows message, attempts elevation, exits if needed
             sys.exit(1) # Exit if not elevated
 
     # 5. Check for Single Instance (Windows only)
-    # --- MODIFICATION: Use new check_single_instance ---
     if os.name == 'nt':
-        should_continue = check_single_instance()
+        # Determine launch mode to handle single-instance logic correctly
+        is_task_launch = STARTUP_ARG_MINIMIZED in sys.argv
+        should_continue = check_single_instance(is_task_launch=is_task_launch)
         if not should_continue:
-            print("Another instance detected and activated (or activation attempted). Exiting.")
-            # Ensure cleanup runs even if exiting early
-            # release_mutex() # check_single_instance handles its own cleanup on exit=False path
-            sys.exit(0) # Exit if another instance is running and activated
-        # If should_continue is True, this instance proceeds.
-        # We'll check is_primary() later to write HWND.
-    # --- END MODIFICATION ---
+            print("Another instance is running or takeover failed. Exiting.")
+            sys.exit(0)
+        # If should_continue is True, this instance is now the primary.
 
     # 6. Initialize QApplication
     QCoreApplication.setOrganizationName(APP_ORGANIZATION_NAME)
@@ -184,7 +184,7 @@ def main():
     # --- END MODIFICATION ---
 
     # 7. Initialize Configuration Manager
-    config_manager = ConfigManager()
+    config_manager = ConfigManager(base_dir=BASE_DIR)
     config_manager.load_config() # Sets language
 
     # 8. Determine if starting minimized

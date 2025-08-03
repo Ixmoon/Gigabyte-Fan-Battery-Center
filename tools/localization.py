@@ -8,11 +8,10 @@ Loads language strings from a JSON file and provides a translation function.
 import json
 import os
 import sys
-from typing import Dict, Optional
+from typing import Dict
 
 # Import settings needed for defaults and paths
 from config.settings import (
-    LANGUAGES_JSON_PATH,
     DEFAULT_LANGUAGE,
     KNOWN_LANGUAGES
 )
@@ -21,7 +20,7 @@ from config.settings import (
 # ... (DEFAULT_ENGLISH_TRANSLATIONS dictionary remains the same) ...
 DEFAULT_ENGLISH_TRANSLATIONS: Dict[str, str] = {
     # Window & UI Elements
-    "window_title": "Fan & Battery Control (Administrator)",
+    "window_title": "Fan & Battery Control",
     "cpu_temp_label": "CPU Temp:",
     "gpu_temp_label": "GPU Temp:",
     "fan1_rpm_label": "Fan 1 RPM:",
@@ -145,7 +144,7 @@ _current_language: str = DEFAULT_LANGUAGE
 _translations_loaded: bool = False
 
 # --- Language Loading Function ---
-def load_translations(file_path: str = LANGUAGES_JSON_PATH, force_reload: bool = False) -> Dict[str, Dict[str, str]]:
+def load_translations(file_path: str, force_reload: bool = False) -> Dict[str, Dict[str, str]]:
     """
     Loads translations from the specified JSON file.
     Creates a default English file if the specified file doesn't exist or is invalid.

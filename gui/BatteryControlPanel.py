@@ -6,7 +6,7 @@ Battery Control Panel QWidget for Fan & Battery Control.
 Contains controls for charge policy (Standard/Custom) and custom charge threshold.
 """
 from PyQt6.QtWidgets import (
-    QWidget, QHBoxLayout, QVBoxLayout, QLabel, QRadioButton, QButtonGroup,
+    QWidget, QHBoxLayout, QLabel, QRadioButton, QButtonGroup,
     QSlider, QSpacerItem, QSizePolicy, QFrame
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, pyqtSlot # Added pyqtSlot

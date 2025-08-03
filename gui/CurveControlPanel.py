@@ -8,10 +8,9 @@ toggling start on boot, and resetting curves.
 """
 from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QButtonGroup, QCheckBox,
-    QSpacerItem, QSizePolicy, QFrame, QMenu, QInputDialog, QMessageBox
+    QSpacerItem, QSizePolicy, QFrame, QInputDialog, QMessageBox
 )
 from PyQt6.QtCore import pyqtSignal, Qt, QEvent, QObject
-from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QLineEdit # Keep for QInputDialog if used within panel
 
 from typing import List, Optional, TYPE_CHECKING

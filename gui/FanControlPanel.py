@@ -6,11 +6,10 @@ Fan Control Panel QWidget for Fan & Battery Control.
 Contains controls for fan mode (Auto/Manual) and manual fan speed.
 """
 from PyQt6.QtWidgets import (
-    QWidget, QHBoxLayout, QVBoxLayout, QLabel, QRadioButton, QButtonGroup,
+    QWidget, QHBoxLayout, QLabel, QRadioButton, QButtonGroup,
     QSlider, QSpacerItem, QSizePolicy, QFrame
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, pyqtSlot # Added pyqtSlot
-from PyQt6.QtGui import QFont # Added QFont for potential styling
 
 from tools.localization import tr
 # from config.settings import DEFAULT_PROFILE_SETTINGS # No longer needed for initial speed

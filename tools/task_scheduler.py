@@ -15,7 +15,7 @@ from typing import List, Tuple
 from config.settings import (
     TASK_SCHEDULER_NAME,
     STARTUP_ARG_MINIMIZED,
-    BASE_DIR # Needed for working directory
+    TASK_XML_FILE_NAME
 )
 # Import utilities for path finding
 from .system_utils import get_application_executable_path, get_application_script_path_for_task
@@ -58,7 +58,7 @@ def _run_schtasks(args: List[str]) -> Tuple[bool, str]:
         error_msg = f"An unexpected error occurred running schtasks.\nCommand: {command_str}\nError: {e}"
         return False, error_msg
 
-def create_startup_task() -> Tuple[bool, str]:
+def create_startup_task(base_dir: str) -> Tuple[bool, str]:
     """
     Creates or updates a Windows Task Scheduler task to run the application.
 
@@ -86,14 +86,13 @@ def create_startup_task() -> Tuple[bool, str]:
         start_arguments = f'"{app_script_path}" {STARTUP_ARG_MINIMIZED}'
         # Target the python interpreter for taskkill (risky if other scripts run)
         executable_base_name = os.path.basename(sys.executable)
-        working_directory = BASE_DIR # Run script from project root
+        working_directory = base_dir # Run script from project root
 
-    # Define the Task XML content
-    # Using CDATA for event query, cmd /c for taskkill robustness
-    task_xml_content = f"""<?xml version="1.0" encoding="UTF-16"?>
+    # Define the default Task XML template. Placeholders use .format() syntax.
+    DEFAULT_TASK_XML_TEMPLATE = """<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>Starts {task_name} on user logon or system resume. First terminates existing instances.</Description>
+    <Description>Starts {task_name} on user logon or system resume. Ensures only one instance is running.</Description>
     <URI>\\{task_name}</URI>
   </RegistrationInfo>
   <Triggers>
@@ -141,11 +140,6 @@ def create_startup_task() -> Tuple[bool, str]:
   </Settings>
   <Actions Context="Author">
     <Exec>
-      <Command>cmd.exe</Command>
-      <!-- Use /c, /F (force), /IM (image name). Redirect output to nul -->
-      <Arguments>/c taskkill /F /IM "{executable_base_name}" &gt; nul 2&gt;&amp;1</Arguments>
-    </Exec>
-    <Exec>
       <Command>"{start_command}"</Command>
       <Arguments>{start_arguments}</Arguments>
       <WorkingDirectory>{working_directory}</WorkingDirectory>
@@ -153,6 +147,40 @@ def create_startup_task() -> Tuple[bool, str]:
   </Actions>
 </Task>
 """
+    # --- Load or Create Task XML Template ---
+    xml_template_path = os.path.join(base_dir, TASK_XML_FILE_NAME)
+    
+    # If the template file doesn't exist, create it with the default content.
+    if not os.path.exists(xml_template_path):
+        try:
+            with open(xml_template_path, 'w', encoding='utf-8') as f:
+                # We write the unformatted default template.
+                # The placeholders will be filled in later.
+                f.write(DEFAULT_TASK_XML_TEMPLATE)
+        except IOError:
+            # If creation fails, we can't proceed with the external file.
+            # We'll just use the in-memory default silently.
+            pass
+
+    # Now, try to load the template from the file path.
+    # It should exist unless there was a write permission error above.
+    task_xml_template = DEFAULT_TASK_XML_TEMPLATE # Default fallback
+    try:
+        with open(xml_template_path, 'r', encoding='utf-8') as f:
+            task_xml_template = f.read()
+    except (IOError, FileNotFoundError):
+        # This will only be reached if the file creation failed.
+        # Silently fall back to the default template.
+        pass
+
+    # Populate the template with dynamic values
+    task_xml_content = task_xml_template.format(
+        task_name=task_name,
+        executable_base_name=executable_base_name,
+        start_command=start_command,
+        start_arguments=start_arguments,
+        working_directory=working_directory
+    )
     temp_xml_path = None
     try:
         # Create a temporary file for the XML (UTF-16 required by schtasks /XML)

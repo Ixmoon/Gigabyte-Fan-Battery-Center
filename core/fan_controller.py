@@ -9,7 +9,6 @@ Includes logic to treat speeds below 10% as 0% ONLY for manual mode.
 
 import math
 import sys
-from typing import Optional
 
 from .wmi_interface import WMIInterface
 from config.settings import (

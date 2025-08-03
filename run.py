@@ -512,7 +512,7 @@ class AppRunner(QObject):
         success = False
         message = ""
         try:
-            if enabled: success, message = create_startup_task()
+            if enabled: success, message = create_startup_task(self.config_manager.base_dir)
             else: success, message = delete_startup_task()
 
             if success:

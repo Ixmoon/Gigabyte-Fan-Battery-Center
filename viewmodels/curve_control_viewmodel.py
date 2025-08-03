@@ -4,7 +4,7 @@
 ViewModel for CurveControlPanel.
 """
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING
 
 from tools.task_scheduler import is_startup_task_registered # Import directly
 

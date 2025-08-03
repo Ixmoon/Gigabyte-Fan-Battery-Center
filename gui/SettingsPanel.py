@@ -6,11 +6,9 @@ Settings Panel QWidget for Fan & Battery Control.
 Contains controls for application settings like language.
 """
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QFrame, QSpacerItem, QSizePolicy
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QFrame
 )
-from PyQt6.QtCore import pyqtSignal, Qt
-
-from typing import Dict, List, Optional
+from PyQt6.QtCore import pyqtSignal, Qt, QTimer
 
 from tools.localization import tr, get_available_languages, get_current_language
 
@@ -111,7 +109,6 @@ if __name__ == '__main__':
     import sys
     from PyQt6.QtWidgets import QApplication, QMainWindow
     from tools.localization import load_translations # Need to load some dummy translations
-    from config.settings import LANGUAGES_JSON_PATH # Assuming this path is valid or mock it
 
     # Mock languages.json content for standalone testing
     import json
@@ -128,11 +125,10 @@ if __name__ == '__main__':
         with open(dummy_lang_file_path, "w", encoding="utf-8") as f:
             json.dump(dummy_langs_data, f, ensure_ascii=False, indent=4)
         
-        # Temporarily point LANGUAGES_JSON_PATH to our dummy for the test
-        original_lang_path = LANGUAGES_JSON_PATH
-        # This is tricky as LANGUAGES_JSON_PATH is a const. We'd typically mock the functions.
         # For this simple test, we'll assume load_translations can take a path.
         # Or, better, mock get_available_languages and get_current_language.
+        load_translations(dummy_lang_file_path, force_reload=True)
+
 
     _available_languages_cache = { # Mocking the cache within localization
         "en": "English", "zh_CN": "简体中文", "de": "Deutsch"

@@ -6,9 +6,7 @@ and manages the complete auto-mode control loop, including timing,
 temperature reads, and fan speed application.
 """
 
-import time
-import math
-from typing import List, Optional, Dict, Tuple
+from typing import List, Optional, Dict
 import numpy as np
 from scipy.interpolate import PchipInterpolator
 import sys

@@ -5,20 +5,18 @@ Matplotlib canvas widget for displaying and editing fan curves.
 """
 
 # ... (previous imports remain the same) ...
-from typing import List, Optional, Any, Dict, Tuple, NamedTuple
+from typing import List, Optional, Any, Dict, Tuple
 import numpy as np
 from scipy.interpolate import PchipInterpolator
 import matplotlib
 matplotlib.use('QtAgg') # Ensure Qt backend is used
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-import matplotlib.pyplot as plt
 import matplotlib.lines as lines
 from matplotlib.backend_bases import MouseButton
 
 from PyQt6.QtWidgets import QSizePolicy, QMessageBox
-from PyQt6.QtCore import pyqtSignal, Qt
-from PyQt6.QtGui import QFont # For potential future font customization
+from PyQt6.QtCore import pyqtSignal
 
 # Import settings for defaults and limits
 from config.settings import (

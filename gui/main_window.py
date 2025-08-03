@@ -7,19 +7,14 @@ Main application window (QMainWindow) for the Fan & Battery Control GUI.
 
 import sys
 import os
-from typing import List, Optional, Dict, Any, NamedTuple
+from typing import List, Optional, NamedTuple
 
-from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QLabel, QPushButton, QRadioButton, QButtonGroup, QSlider, QFrame,
-    QSizePolicy, QComboBox, QSpacerItem, QMessageBox, QInputDialog, QLineEdit,
-    QCheckBox, QSystemTrayIcon, QMenu, QAbstractButton
-)
+from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFrame, QMessageBox, QSystemTrayIcon, QMenu
 from PyQt6.QtCore import (
-    Qt, QTimer, QObject, pyqtSignal, QSize, QLocale, QCoreApplication, QEvent,
+    Qt, QTimer,  pyqtSignal, QLocale, QEvent,
     pyqtSlot, QByteArray
 )
-from PyQt6.QtGui import QFont, QPalette, QColor, QIcon, QAction, QCloseEvent, QShowEvent, QHideEvent
+from PyQt6.QtGui import QIcon, QAction, QCloseEvent, QShowEvent, QHideEvent
 
 from .curve_canvas import CurveCanvas
 # --- MODIFICATION: Import new panel components ---
@@ -40,7 +35,7 @@ from tools.config_manager import ConfigManager, ProfileSettings
 from tools.localization import tr, get_available_languages, set_language, get_current_language # get_available_languages, get_current_language might be removed if SettingsPanel handles all
 from tools.task_scheduler import create_startup_task, delete_startup_task, is_startup_task_registered
 from config.settings import (
-    APP_NAME, NUM_PROFILES, APP_ICON_PATH,
+    APP_NAME, NUM_PROFILES, APP_ICON_NAME,
     TEMP_READ_ERROR_VALUE, RPM_READ_ERROR_VALUE,
     CHARGE_POLICY_READ_ERROR_VALUE, CHARGE_THRESHOLD_READ_ERROR_VALUE,
     INIT_APPLIED_PERCENTAGE, DEFAULT_PROFILE_SETTINGS
@@ -118,6 +113,7 @@ class MainWindow(QMainWindow):
         self._is_window_visible: bool = not start_minimized # Track visibility state
         self._current_gui_update_interval_ms: int = DEFAULT_PROFILE_SETTINGS['GUI_UPDATE_INTERVAL_MS']
         self._is_showing_transient_status: bool = False
+        self.command_poll_timer: Optional[QTimer] = None
 
         # Panel members are declared below
         # Old UI element attributes (sliders, specific buttons, interaction flags, timers) are removed
@@ -157,15 +153,13 @@ class MainWindow(QMainWindow):
         # Show window or tray icon based on start_minimized flag
         if self.start_minimized:
             if self.tray_icon: self.tray_icon.show()
-            # Don't call self.show()
-            # --- NEW: Emit initial background state if starting minimized ---
             self.background_state_changed.emit(True)
-            # --- END NEW ---
         else:
             self.show()
-            # --- NEW: Emit initial foreground state if starting visible ---
             self.background_state_changed.emit(False)
-            # --- END NEW ---
+
+        # Start the command poller
+        self._start_command_poller()
 
     def _apply_locale(self, lang_code: str):
         """Sets the Qt application locale."""
@@ -271,22 +265,42 @@ class MainWindow(QMainWindow):
     #     self.language_combo.blockSignals(False)
 
     def init_tray_icon(self):
-        """Initializes the system tray icon and menu."""
+        """Initializes the system tray icon and menu with a fallback mechanism."""
         if not QSystemTrayIcon.isSystemTrayAvailable():
             self.tray_icon = None
             return
 
         self.tray_icon = QSystemTrayIcon(self)
-        if os.path.exists(APP_ICON_PATH):
-            app_icon = QIcon(APP_ICON_PATH)
-            if app_icon.isNull():
-                print(f"Warning: Failed to load icon from '{APP_ICON_PATH}'. Using default.", file=sys.stderr)
-                self._use_default_icon()
+        
+        app_icon = None
+        
+        # 1. Try to load the external, user-replaceable icon first.
+        external_icon_path = os.path.join(self.config_manager.base_dir, APP_ICON_NAME)
+        if os.path.exists(external_icon_path):
+            icon_from_file = QIcon(external_icon_path)
+            if not icon_from_file.isNull():
+                app_icon = icon_from_file
             else:
-                self.tray_icon.setIcon(app_icon)
-                self.setWindowIcon(app_icon)
+                print(f"Warning: External icon file '{external_icon_path}' found but is invalid or corrupt.", file=sys.stderr)
+
+        # 2. If external icon failed, try the icon embedded in the executable (for packaged app).
+        if app_icon is None and getattr(sys, 'frozen', False):
+            try:
+                embedded_icon_path = sys.executable
+                icon_from_exe = QIcon(embedded_icon_path)
+                if not icon_from_exe.isNull():
+                    app_icon = icon_from_exe
+                else:
+                    print("Warning: Could not load icon embedded in the executable.", file=sys.stderr)
+            except Exception as e:
+                print(f"Error trying to load embedded icon: {e}", file=sys.stderr)
+
+        # 3. Apply the loaded icon or use a final, generic system fallback.
+        if app_icon:
+            self.tray_icon.setIcon(app_icon)
+            self.setWindowIcon(app_icon)
         else:
-            print(f"Warning: Application icon '{APP_ICON_PATH}' not found. Using default.", file=sys.stderr)
+            print("Warning: No valid external or embedded icon found. Using generic system default icon.", file=sys.stderr)
             self._use_default_icon()
 
         self.tray_icon.setToolTip(APP_NAME)
@@ -759,6 +773,40 @@ class MainWindow(QMainWindow):
         # and slider value labels (e.g. self.on_manual_fan_slider_changed(...)) during retranslate
         # is now handled within each panel's retranslate_ui or by the update_status_display call.
 
+
+    # --- Command Polling ---
+
+    def _start_command_poller(self):
+        """Initializes and starts a QTimer to poll for commands in shared memory."""
+        from tools.single_instance import read_command_from_shared_memory, write_command_to_shared_memory
+        from config.settings import COMMAND_NONE
+
+        self.command_poll_timer = QTimer(self)
+        self.command_poll_timer.setInterval(250) # Check every 250ms
+
+        def _check_for_commands():
+            command = read_command_from_shared_memory()
+            if command is not None and command != COMMAND_NONE:
+                # Reset the command immediately to prevent re-triggering
+                write_command_to_shared_memory(COMMAND_NONE)
+                # Handle the command
+                self._handle_command(command)
+
+        self.command_poll_timer.timeout.connect(_check_for_commands)
+        self.command_poll_timer.start()
+        print("Shared memory command poller started.")
+
+    def _handle_command(self, command: int):
+        """Handles commands read from shared memory."""
+        from config.settings import COMMAND_QUIT, COMMAND_SHOW
+        if command == COMMAND_QUIT:
+            print("Received quit command from shared memory. Initiating shutdown.")
+            self._request_quit()
+        elif command == COMMAND_SHOW:
+            print("Received show command from shared memory. Activating window.")
+            self.toggle_window_visibility()
+        else:
+            print(f"Warning: Received unknown command '{command}' from shared memory.")
 
     # --- Window Event Handlers ---
 

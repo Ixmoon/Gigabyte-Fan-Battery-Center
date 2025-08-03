@@ -20,3 +20,5 @@ venv_std/
 # IDE / Editor specific
 .idea/
 .vscode/
+dist_nuitka/
+nuitka-crash-report.xml

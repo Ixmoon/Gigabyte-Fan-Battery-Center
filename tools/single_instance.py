@@ -8,12 +8,13 @@ the existing window and attempts recovery from crashes.
 
 import sys
 import os
-import time # For potential delays
-from typing import Optional, Tuple
+from typing import Optional
 
 # Import settings for names, size, app name, startup argument
 from config.settings import (
-    MUTEX_NAME, SHARED_MEM_NAME, SHARED_MEM_SIZE, APP_NAME, STARTUP_ARG_MINIMIZED
+    MUTEX_NAME, SHARED_MEM_NAME, SHARED_MEM_SIZE, APP_NAME, STARTUP_ARG_MINIMIZED,
+    SHARED_MEM_HWND_OFFSET, SHARED_MEM_HWND_SIZE, SHARED_MEM_COMMAND_OFFSET,
+    COMMAND_QUIT, COMMAND_SHOW
 )
 # Import localization for messages
 from .localization import tr
@@ -101,6 +102,11 @@ if os.name == 'nt':
         SetForegroundWindow.restype = wintypes.BOOL
         SetForegroundWindow.argtypes = [wintypes.HWND]
 
+        AllowSetForegroundWindow = user32.AllowSetForegroundWindow
+        AllowSetForegroundWindow.restype = wintypes.BOOL
+        AllowSetForegroundWindow.argtypes = [wintypes.DWORD]
+        ASFW_ANY = -1
+
         ShowWindow = user32.ShowWindow
         ShowWindow.restype = wintypes.BOOL
         ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
@@ -108,6 +114,10 @@ if os.name == 'nt':
         IsIconic = user32.IsIconic
         IsIconic.restype = wintypes.BOOL
         IsIconic.argtypes = [wintypes.HWND]
+
+        IsWindowVisible = user32.IsWindowVisible
+        IsWindowVisible.restype = wintypes.BOOL
+        IsWindowVisible.argtypes = [wintypes.HWND]
 
         SW_RESTORE = win32con.SW_RESTORE
 
@@ -158,45 +168,65 @@ def _create_or_open_shared_memory() -> bool:
     return True
 
 def write_hwnd_to_shared_memory(hwnd: int):
-    """Writes the HWND (as string) to the shared memory."""
+    """Writes the HWND (as string) to its designated block in shared memory."""
     global _shared_mem_view
     if not _single_instance_check_enabled or not _shared_mem_view:
-        print("Warning: Cannot write HWND, shared memory not initialized.", file=sys.stderr)
         return
 
     try:
         hwnd_str = str(hwnd).encode('utf-8')
-        if len(hwnd_str) >= SHARED_MEM_SIZE:
-            raise ValueError("HWND string representation too large for shared memory")
+        if len(hwnd_str) >= SHARED_MEM_HWND_SIZE:
+            raise ValueError("HWND string is too large for its shared memory block")
 
-        # Create a buffer from the mapped view
-        buffer = (ctypes.c_char * SHARED_MEM_SIZE).from_address(_shared_mem_view)
-        # Clear buffer first
-        ctypes.memset(_shared_mem_view, 0, SHARED_MEM_SIZE)
-        # Copy HWND string into buffer
+        # Create a buffer pointing to the start of the HWND block
+        buffer = (ctypes.c_char * SHARED_MEM_HWND_SIZE).from_address(_shared_mem_view + SHARED_MEM_HWND_OFFSET)
+        # Clear only the HWND block
+        ctypes.memset(_shared_mem_view + SHARED_MEM_HWND_OFFSET, 0, SHARED_MEM_HWND_SIZE)
+        # Write the HWND string
         buffer.value = hwnd_str
-        print(f"HWND {hwnd} written to shared memory.") # Debug
+        print(f"HWND {hwnd} written to shared memory.")
     except Exception as e:
         print(f"Error writing HWND to shared memory: {e}", file=sys.stderr)
 
 def read_hwnd_from_shared_memory() -> Optional[int]:
-    """Reads the HWND (as string) from shared memory and converts to int."""
+    """Reads the HWND from its designated block in shared memory."""
     global _shared_mem_view
     if not _single_instance_check_enabled or not _shared_mem_view:
         return None
 
     try:
-        buffer = (ctypes.c_char * SHARED_MEM_SIZE).from_address(_shared_mem_view)
-        hwnd_str = buffer.value.decode('utf-8')
-        if hwnd_str:
-            return int(hwnd_str)
-        else:
-            return None
+        buffer = (ctypes.c_char * SHARED_MEM_HWND_SIZE).from_address(_shared_mem_view + SHARED_MEM_HWND_OFFSET)
+        hwnd_str = buffer.value.decode('utf-8').strip('\x00')
+        return int(hwnd_str) if hwnd_str else None
     except (ValueError, TypeError, UnicodeDecodeError) as e:
-        print(f"Error reading or converting HWND from shared memory: {e}", file=sys.stderr)
+        print(f"Error reading HWND from shared memory: {e}", file=sys.stderr)
         return None
+
+def write_command_to_shared_memory(command: int):
+    """Writes a command byte to its designated block in shared memory."""
+    global _shared_mem_view
+    if not _single_instance_check_enabled or not _shared_mem_view:
+        return
+
+    try:
+        # Create a pointer to the command byte location
+        command_ptr = (ctypes.c_byte*1).from_address(_shared_mem_view + SHARED_MEM_COMMAND_OFFSET)
+        command_ptr[0] = command
+        # print(f"Command {command} written to shared memory.") # Verbose
     except Exception as e:
-        print(f"Unexpected error reading HWND from shared memory: {e}", file=sys.stderr)
+        print(f"Error writing command to shared memory: {e}", file=sys.stderr)
+
+def read_command_from_shared_memory() -> Optional[int]:
+    """Reads the command byte from its designated block in shared memory."""
+    global _shared_mem_view
+    if not _single_instance_check_enabled or not _shared_mem_view:
+        return None
+
+    try:
+        command_ptr = (ctypes.c_byte*1).from_address(_shared_mem_view + SHARED_MEM_COMMAND_OFFSET)
+        return command_ptr[0]
+    except Exception as e:
+        print(f"Error reading command from shared memory: {e}", file=sys.stderr)
         return None
 
 def close_shared_memory():
@@ -213,154 +243,161 @@ def close_shared_memory():
 
 # --- Single Instance Check ---
 
-def check_single_instance() -> bool:
+def check_single_instance(is_task_launch: bool = False) -> bool:
     """
-    Checks for another instance using Mutex and Shared Memory.
-    Handles activation and crash recovery.
+    Checks for another instance, with different logic for manual vs. task launches.
+
+    - Manual Launch: Activates the existing window and exits the new instance.
+    - Task Launch: Signals the existing instance to gracefully quit, waits for it
+      to exit, and then takes over as the primary instance.
 
     Returns:
-        bool: True if this instance should continue (is primary or recovered),
-              False if another *running* instance was activated and this one should exit.
+        bool: True if this instance should continue, False if it should exit.
     """
     global _mutex_handle, _single_instance_check_enabled, _is_primary_instance
     if not _single_instance_check_enabled:
-        return True # Allow continuation if check is disabled
+        return True
 
-    _is_primary_instance = False # Reset flag
-
+    _is_primary_instance = False
     try:
-        # 1. Try to create the mutex
         _mutex_handle = CreateMutexW(None, False, MUTEX_NAME)
         last_error = GetLastError()
 
         if _mutex_handle and last_error == 0:
-            # 2. Success: This is the first instance.
+            # This is the first and only instance.
             print("Mutex created. This is the primary instance.")
             _is_primary_instance = True
-            # Create or open shared memory (will create it here)
             if not _create_or_open_shared_memory():
-                 print("Warning: Failed to create shared memory for primary instance.", file=sys.stderr)
-                 # Continue anyway, but activation won't work for subsequent instances
-            return True # Continue execution
+                print("Warning: Failed to create shared memory for primary instance.", file=sys.stderr)
+            return True
 
         elif last_error == ERROR_ALREADY_EXISTS:
-            # 3. Mutex already exists. Try to open it and check state.
+            # Another instance exists.
             print("Mutex exists. Checking state of existing instance...")
-            if _mutex_handle: # Close the handle returned by CreateMutexW when it fails
+            if _mutex_handle:
                 CloseHandle(_mutex_handle)
                 _mutex_handle = None
 
             existing_mutex = OpenMutexW(MUTEX_ALL_ACCESS, False, MUTEX_NAME)
             if not existing_mutex:
-                # Failed to open existing mutex - unusual, maybe permissions? Assume crash.
-                print(f"Warning: Could not open existing mutex (Error: {GetLastError()}). Assuming previous instance crashed.")
-                # Try to forcefully create our own mutex now? Risky.
-                # Let's proceed as if we are the primary, but without holding the mutex.
-                _is_primary_instance = True # Act as primary for shared mem creation
-                if not _create_or_open_shared_memory():
-                     print("Warning: Failed to create shared memory after failing to open mutex.", file=sys.stderr)
-                return True # Continue execution
+                print(f"Warning: Could not open existing mutex (Error: {GetLastError()}). Assuming crash.")
+                return _handle_crashed_instance()
 
-            # Check if the mutex is abandoned (previous owner crashed)
             wait_result = WaitForSingleObject(existing_mutex, 0)
 
             if wait_result == WAIT_ABANDONED:
-                # 4. Mutex abandoned: Previous instance crashed. This instance takes over.
-                print("Existing mutex is abandoned. Assuming previous instance crashed. Taking over.")
-                # We now implicitly own the mutex. Keep the handle.
-                _mutex_handle = existing_mutex
-                _is_primary_instance = True
-                # Create/overwrite shared memory
-                if not _create_or_open_shared_memory():
-                     print("Warning: Failed to create/overwrite shared memory after abandoned mutex.", file=sys.stderr)
-                return True # Continue execution
+                print("Existing mutex is abandoned. Assuming crash.")
+                _mutex_handle = existing_mutex # We now own it
+                return _handle_crashed_instance()
 
             elif wait_result == WAIT_TIMEOUT:
-                # 5. Mutex held: Previous instance likely running. Activate it.
-                print("Existing mutex is held. Attempting to activate existing window.")
-                CloseHandle(existing_mutex) # Close the handle we opened for checking
-                existing_mutex = None
-
-                # Open shared memory to read HWND
-                if not _create_or_open_shared_memory():
-                    print("Error: Failed to open shared memory to read HWND.", file=sys.stderr)
-                    # Cannot activate, show message and exit
-                    _show_activation_fallback_message()
-                    return False # Exit this instance
-
-                hwnd = read_hwnd_from_shared_memory()
-                if hwnd and IsWindow(hwnd):
-                    print(f"Found valid HWND {hwnd} in shared memory. Activating.")
-                    try:
-                        if IsIconic(hwnd):
-                            ShowWindow(hwnd, SW_RESTORE)
-                        SetForegroundWindow(hwnd)
-                        # Give focus some time? Might not be necessary.
-                        # time.sleep(0.1)
-                    except Exception as activation_error:
-                         print(f"Error activating window {hwnd}: {activation_error}", file=sys.stderr)
-                         _show_activation_fallback_message()
+                # Mutex is held, instance is running.
+                if is_task_launch:
+                    # Task Launch: Signal old instance to quit, then take over.
+                    print("Task Launch: Signaling existing instance to quit.")
+                    return _signal_and_takeover(existing_mutex)
                 else:
-                    print("Warning: Could not read valid HWND from shared memory or window no longer exists.")
-                    _show_activation_fallback_message()
-
-                # Regardless of activation success/failure, this instance should exit.
-                close_shared_memory() # Clean up handles for this instance
-                return False # Exit this instance
-
-            elif wait_result == WAIT_OBJECT_0:
-                 # Should not happen if CreateMutex failed with ERROR_ALREADY_EXISTS
-                 # but means mutex was signaled. Treat as running.
-                 print("Warning: Mutex check returned WAIT_OBJECT_0 unexpectedly. Assuming running instance.")
-                 ReleaseMutex(existing_mutex) # Release the ownership we just got
-                 CloseHandle(existing_mutex)
-                 # Try activating
-                 if _create_or_open_shared_memory():
-                     hwnd = read_hwnd_from_shared_memory()
-                     if hwnd and IsWindow(hwnd): _activate_window(hwnd)
-                     else: _show_activation_fallback_message()
-                     close_shared_memory()
-                 else:
-                     _show_activation_fallback_message()
-                 return False # Exit this instance
-
-            else: # WAIT_FAILED or other error
-                print(f"Warning: WaitForSingleObject failed (Result: {wait_result}, Error: {GetLastError()}). Assuming running instance.")
+                    # Manual Launch: Activate old instance, then exit.
+                    print("Manual Launch: Activating existing instance.")
+                    _activate_and_exit(existing_mutex)
+                    return False # This instance must exit
+            else:
+                # Unexpected state, play it safe.
+                print(f"Warning: Mutex check had unexpected result {wait_result}. Activating and exiting.")
+                ReleaseMutex(existing_mutex)
                 CloseHandle(existing_mutex)
-                # Try activating as a best guess
-                if _create_or_open_shared_memory():
-                    hwnd = read_hwnd_from_shared_memory()
-                    if hwnd and IsWindow(hwnd): _activate_window(hwnd)
-                    else: _show_activation_fallback_message()
-                    close_shared_memory()
-                else:
-                    _show_activation_fallback_message()
-                return False # Exit this instance
+                _activate_and_exit(None) # Try to activate without mutex handle
+                return False
 
         else:
-            # 6. CreateMutexW failed for a reason other than ERROR_ALREADY_EXISTS
-            print(f"Warning: Failed to create mutex (Error code: {last_error}). Single instance check disabled.", file=sys.stderr)
+            # CreateMutexW failed for another reason.
+            print(f"Warning: Failed to create mutex (Error: {last_error}). Disabling check.", file=sys.stderr)
             _single_instance_check_enabled = False
-            if _mutex_handle: CloseHandle(_mutex_handle) # Should be null, but safety
+            if _mutex_handle: CloseHandle(_mutex_handle)
             _mutex_handle = None
-            return True # Allow continuation
+            return True
 
     except Exception as e:
         print(f"Error during single instance check: {e}. Disabling check.", file=sys.stderr)
         _single_instance_check_enabled = False
-        release_mutex() # Clean up any handles acquired before the error
-        return True # Allow continuation
+        release_mutex()
+        return True
+
+def _handle_crashed_instance() -> bool:
+    """Handles logic for taking over from a crashed instance."""
+    global _is_primary_instance
+    _is_primary_instance = True
+    if not _create_or_open_shared_memory():
+        print("Warning: Failed to create/overwrite shared memory after crash.", file=sys.stderr)
+    return True
+
+def _activate_and_exit(existing_mutex_handle: Optional[int]):
+    """Activates the existing window and ensures the current process will exit."""
+    if existing_mutex_handle:
+        CloseHandle(existing_mutex_handle)
+    if _create_or_open_shared_memory():
+        hwnd = read_hwnd_from_shared_memory()
+        if hwnd and IsWindow(hwnd):
+            _activate_window(hwnd)
+            # After activating, send a command to ensure it shows itself, in case it was hidden.
+            write_command_to_shared_memory(COMMAND_SHOW)
+        else:
+            _show_activation_fallback_message()
+        close_shared_memory()
+    else:
+        _show_activation_fallback_message()
+
+def _signal_and_takeover(existing_mutex: int) -> bool:
+    """Writes a quit command to shared memory and waits to take over the mutex."""
+    global _mutex_handle, _is_primary_instance
+    if not _create_or_open_shared_memory():
+        print("Error: Cannot open shared memory to signal. Aborting.", file=sys.stderr)
+        CloseHandle(existing_mutex)
+        return False
+
+    # Write the quit command and immediately close our view of the memory.
+    write_command_to_shared_memory(COMMAND_QUIT)
+    close_shared_memory()
+
+    print("Waiting for existing instance to release mutex...")
+    wait_result = WaitForSingleObject(existing_mutex, 5000) # 5-second timeout
+
+    if wait_result == WAIT_OBJECT_0 or wait_result == WAIT_ABANDONED:
+        print("Mutex acquired. Taking over as primary instance.")
+        _mutex_handle = existing_mutex
+        _is_primary_instance = True
+        if not _create_or_open_shared_memory():
+            print("Warning: Failed to create shared memory after takeover.", file=sys.stderr)
+        return True
+    else:
+        error_code = GetLastError()
+        print(f"Error: Timed out waiting for mutex (Result: {wait_result}, Err: {error_code}).", file=sys.stderr)
+        CloseHandle(existing_mutex)
+        return False
 
 def is_primary() -> bool:
     """Returns True if this instance is determined to be the primary one."""
     return _is_primary_instance
 
 def _activate_window(hwnd: int):
-    """Helper function to bring a window to the foreground."""
+    """Helper function to reliably bring a window to the foreground."""
     try:
-        if IsIconic(hwnd):
-            ShowWindow(hwnd, SW_RESTORE)
-        SetForegroundWindow(hwnd)
+        # Allow any process to set the foreground window. This is the key.
+        AllowSetForegroundWindow(ASFW_ANY)
+
+        # If the window is hidden or minimized, the show command will handle it.
+        # Here, we just need to ensure it gets focus when it does show.
+        # If it's already visible, this brings it to the front.
+        if IsWindowVisible(hwnd):
+             if IsIconic(hwnd):
+                ShowWindow(hwnd, SW_RESTORE)
+             SetForegroundWindow(hwnd)
+        else:
+            # If window is not visible (hidden to tray), SetForegroundWindow won't work.
+            # The COMMAND_SHOW sent later will trigger the GUI to unhide itself,
+            # and at that point it should grab focus.
+            print("Window is not visible, relying on COMMAND_SHOW to restore.")
+
     except Exception as activation_error:
         print(f"Error activating window {hwnd}: {activation_error}", file=sys.stderr)
         _show_activation_fallback_message()

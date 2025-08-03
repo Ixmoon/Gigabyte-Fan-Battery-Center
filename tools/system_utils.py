@@ -12,7 +12,6 @@ import subprocess
 # Import localization for error messages
 from .localization import tr
 # Import settings for base directory (needed for relaunch)
-from config.settings import BASE_DIR
 
 def is_admin() -> bool:
     """Checks if the script is running with Administrator privileges on Windows."""
@@ -28,7 +27,7 @@ def is_admin() -> bool:
         # For simplicity, return True, assuming privilege checks are handled differently.
         return True
 
-def run_as_admin():
+def run_as_admin(base_dir: str):
     """
     Attempts to relaunch the application with administrator privileges on Windows.
     If successful, the current non-admin instance exits.
@@ -68,7 +67,7 @@ def run_as_admin():
                 "runas",        # lpOperation
                 python_exe,     # lpFile (the interpreter)
                 f'"{script_file}" {script_params}', # lpParameters (quoted script path + args)
-                BASE_DIR,       # lpDirectory (working directory)
+                base_dir,       # lpDirectory (working directory)
                 1               # nShowCmd (SW_SHOWNORMAL)
             )
         else:
@@ -82,7 +81,7 @@ def run_as_admin():
                 "runas",        # lpOperation
                 exe_file,       # lpFile (the executable)
                 exe_params,     # lpParameters (arguments passed to the exe)
-                BASE_DIR,       # lpDirectory (working directory)
+                base_dir,       # lpDirectory (working directory)
                 1               # nShowCmd
             )
 

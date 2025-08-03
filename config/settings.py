@@ -3,26 +3,7 @@
 """
 Global constants and default settings for the Fan & Battery Control application.
 """
-
-import os
-import sys
 from typing import List, Dict
-
-# ==============================================================================
-# Base Directory Determination
-# ==============================================================================
-# Determine the base directory of the application, whether running as script or frozen executable
-try:
-    if getattr(sys, 'frozen', False):
-        # Running as a PyInstaller bundle
-        BASE_DIR = os.path.dirname(sys.executable)
-    else:
-        # Running as a normal script
-        # Assumes settings.py is in FanBatteryControl/config/
-        BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-except NameError:
-    # Fallback if __file__ is not defined (e.g., interactive interpreter)
-    BASE_DIR = os.getcwd()
 
 # ==============================================================================
 # Application Info
@@ -33,14 +14,12 @@ APP_INTERNAL_NAME: str = "FanBatteryControl" # Used for mutex, task name
 APP_VERSION: str = "1.0.0"
 
 # ==============================================================================
-# File Paths (Relative to BASE_DIR)
+# File Paths (Relative file names, absolute paths will be constructed in main)
 # ==============================================================================
-CONFIG_FILE_REL_PATH: str = "control_config.json"
-LANGUAGES_JSON_REL_PATH: str = "languages.json"
-APP_ICON_REL_PATH: str = "app_icon.png"
-CONFIG_FILE_PATH: str = os.path.join(BASE_DIR, CONFIG_FILE_REL_PATH)
-LANGUAGES_JSON_PATH: str = os.path.join(BASE_DIR, LANGUAGES_JSON_REL_PATH)
-APP_ICON_PATH: str = os.path.join(BASE_DIR, APP_ICON_REL_PATH)
+CONFIG_FILE_NAME: str = "control_config.json"
+LANGUAGES_JSON_NAME: str = "languages.json"
+APP_ICON_NAME: str = "app_icon.ico"
+TASK_XML_FILE_NAME: str = "task_template.xml" # For custom task scheduler definitions
 
 # ==============================================================================
 # Default Configuration Values
@@ -177,6 +156,14 @@ _APP_GUID: str = "{17e0cc04-cddb-4b9b-adcc-5faa4872e054}"
 MUTEX_NAME: str = f"Global\\{APP_INTERNAL_NAME}_Mutex_{_APP_GUID}"
 SHARED_MEM_NAME: str = f"Global\\{APP_INTERNAL_NAME}_SharedMem_{_APP_GUID}"
 SHARED_MEM_SIZE: int = 64 # Size in bytes (enough for HWND as string + null terminator, or binary)
+# --- Shared Memory Command Structure ---
+SHARED_MEM_HWND_OFFSET: int = 0
+SHARED_MEM_HWND_SIZE: int = 32 # Reserve 32 bytes for HWND string
+SHARED_MEM_COMMAND_OFFSET: int = 32 # Command byte starts after HWND block
+SHARED_MEM_COMMAND_SIZE: int = 1 # Just one byte for the command
+COMMAND_NONE: int = 0
+COMMAND_QUIT: int = 1
+COMMAND_SHOW: int = 2 # Command to request the main window to show itself
 
 # ==============================================================================
 # Font Configuration (for Matplotlib)

@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Any
 
 # Import settings for defaults and paths
 from config.settings import (
-    CONFIG_FILE_PATH,
+    CONFIG_FILE_NAME,
     DEFAULT_LANGUAGE,
     DEFAULT_START_ON_BOOT,
     NUM_PROFILES,
@@ -32,14 +32,15 @@ ConfigDict = Dict[str, Any]
 class ConfigManager:
     """Handles loading, saving, and validation of application configuration."""
 
-    def __init__(self, filename: str = CONFIG_FILE_PATH):
+    def __init__(self, base_dir: str):
         """
         Initializes the ConfigManager.
 
         Args:
-            filename: The path to the configuration file.
+            base_dir: The absolute base directory of the application.
         """
-        self.filename = filename
+        self.base_dir = base_dir # Store base directory
+        self.filename = os.path.join(self.base_dir, CONFIG_FILE_NAME)
         # Default structure is generated dynamically using potentially translated names
         self.config: ConfigDict = self._get_default_config() # Load defaults initially
 
