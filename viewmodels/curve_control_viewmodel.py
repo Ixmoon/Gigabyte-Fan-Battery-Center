@@ -3,7 +3,7 @@
 """
 ViewModel for CurveControlPanel.
 """
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
+from gui.qt import QObject, Signal, Slot
 from typing import List, Optional, TYPE_CHECKING
 
 from tools.task_scheduler import is_startup_task_registered # Import directly
@@ -17,20 +17,20 @@ class CurveControlViewModel(QObject):
     Manages state and logic for curve selection, profiles, and startup settings.
     """
     # --- Signals to notify CurveControlPanel (View) ---
-    active_curve_type_updated = pyqtSignal(str) # 'cpu' or 'gpu'
-    profile_list_updated = pyqtSignal(list, str) # List of profile names, active profile name
-    active_profile_updated = pyqtSignal(str) # Name of the new active profile
-    start_on_boot_status_updated = pyqtSignal(bool) # True if enabled
-    panel_enabled_updated = pyqtSignal(bool)
+    active_curve_type_updated = Signal(str) # 'cpu' or 'gpu'
+    profile_list_updated = Signal(list, str) # List of profile names, active profile name
+    active_profile_updated = Signal(str) # Name of the new active profile
+    start_on_boot_status_updated = Signal(bool) # True if enabled
+    panel_enabled_updated = Signal(bool)
     # This signal is for the panel to update a specific button's text after AppRunner confirms rename
-    profile_renamed_locally = pyqtSignal(str, str) # old_name, new_name
+    profile_renamed_locally = Signal(str, str) # old_name, new_name
 
     # --- Signals to AppRunner ---
-    profile_to_activate_signal = pyqtSignal(str)
-    profile_to_save_signal = pyqtSignal(str) # Emits profile_name, AppRunner gathers settings
-    profile_to_rename_signal = pyqtSignal(str, str) # old_name, new_name
-    start_on_boot_to_apply_signal = pyqtSignal(bool)
-    curve_to_reset_signal = pyqtSignal() # AppRunner knows active curve from this VM's state
+    profile_to_activate_signal = Signal(str)
+    profile_to_save_signal = Signal(str) # Emits profile_name, AppRunner gathers settings
+    profile_to_rename_signal = Signal(str, str) # old_name, new_name
+    start_on_boot_to_apply_signal = Signal(bool)
+    curve_to_reset_signal = Signal() # AppRunner knows active curve from this VM's state
 
     def __init__(self, app_runner: 'AppRunner', parent: Optional[QObject] = None):
         super().__init__(parent)
@@ -80,7 +80,7 @@ class CurveControlViewModel(QObject):
         return self._is_panel_enabled
 
     # --- Slots for CurveControlPanel (View) to call ---
-    @pyqtSlot(str)
+    @Slot(str)
     def set_active_curve_type(self, curve_type: str):
         """Called by View when user selects CPU or GPU curve."""
         if curve_type not in ["cpu", "gpu"]: return
@@ -90,20 +90,20 @@ class CurveControlViewModel(QObject):
             # AppRunner might listen to this if it needs to do something specific beyond UI update.
             # For now, CurveCanvas listens via MainWindow.
 
-    @pyqtSlot(str)
+    @Slot(str)
     def activate_profile(self, profile_name: str):
         """Called by View when user clicks a profile button. Emits signal to AppRunner."""
         if profile_name in self._profile_names and self._active_profile_name != profile_name:
             self.profile_to_activate_signal.emit(profile_name)
             # AppRunner will handle logic and then call self.update_active_profile
             
-    @pyqtSlot(str) # profile_name for which to save current settings
+    @Slot(str) # profile_name for which to save current settings
     def request_save_profile(self, profile_name: str):
         """Called by View to save current UI settings to a specific profile. Emits signal to AppRunner."""
         self.profile_to_save_signal.emit(profile_name)
         # AppRunner will gather settings and save, then might update profile list if names changed (unlikely for save).
 
-    @pyqtSlot(str, str) # old_name, new_name
+    @Slot(str, str) # old_name, new_name
     def request_rename_profile(self, old_name: str, new_name: str):
         """Called by View to rename a profile. Emits signal to AppRunner."""
         if old_name in self._profile_names and new_name and old_name != new_name:
@@ -111,21 +111,21 @@ class CurveControlViewModel(QObject):
             self.profile_to_rename_signal.emit(old_name, new_name)
             # AppRunner will handle logic and then call self.confirm_profile_rename and self.update_profile_list
 
-    @pyqtSlot(bool)
+    @Slot(bool)
     def set_start_on_boot(self, enabled: bool):
         """Called by View when 'Start on Boot' checkbox changes. Emits signal to AppRunner."""
         if self._is_start_on_boot_enabled != enabled: # Only emit if state actually changes from user input
             self.start_on_boot_to_apply_signal.emit(enabled)
             # AppRunner will handle logic and then call self.update_start_on_boot_status
 
-    @pyqtSlot() # No parameter needed, VM knows active curve type
+    @Slot() # No parameter needed, VM knows active curve type
     def request_reset_active_curve(self):
         """Called by View to reset the active curve to default. Emits signal to AppRunner."""
         self.curve_to_reset_signal.emit()
         # AppRunner will handle logic (using self._active_curve_type) and trigger curve update.
 
     # --- Slots for AppRunner (Model/Controller) to call to update ViewModel state ---
-    @pyqtSlot(list, str) # profile_names, active_profile_name
+    @Slot(list, str) # profile_names, active_profile_name
     def update_profile_list_and_active(self, profile_names: List[str], active_profile_name: str):
         """Called by AppRunner when the list of profiles or active profile changes."""
         self._profile_names = profile_names
@@ -135,14 +135,14 @@ class CurveControlViewModel(QObject):
             self.active_profile_updated.emit(self._active_profile_name)
 
 
-    @pyqtSlot(str) # Only updates active profile name, assumes list is current
+    @Slot(str) # Only updates active profile name, assumes list is current
     def update_active_profile(self, active_profile_name: str):
         """Called by AppRunner when only the active profile name changes."""
         if self._active_profile_name != active_profile_name:
             self._active_profile_name = active_profile_name
             self.active_profile_updated.emit(self._active_profile_name)
 
-    @pyqtSlot(str, str)
+    @Slot(str, str)
     def confirm_profile_rename(self, old_name: str, new_name: str):
         """Called by AppRunner after successfully renaming a profile in ConfigManager."""
         # Update internal list if AppRunner doesn't send a full new list immediately
@@ -158,14 +158,14 @@ class CurveControlViewModel(QObject):
         self.profile_renamed_locally.emit(old_name, new_name) # For panel to update button text
         # AppRunner should also call update_profile_list_and_active to refresh the whole list in UI.
 
-    @pyqtSlot(bool)
+    @Slot(bool)
     def update_start_on_boot_status(self, enabled: bool):
         """Called by AppRunner with the current startup task registration status."""
         if self._is_start_on_boot_enabled != enabled:
             self._is_start_on_boot_enabled = enabled
             self.start_on_boot_status_updated.emit(self._is_start_on_boot_enabled)
             
-    @pyqtSlot(bool)
+    @Slot(bool)
     def set_panel_enabled(self, enabled: bool): # Renamed for consistency
         """Called by AppRunner/MainWindow to globally enable/disable controls."""
         if self._is_panel_enabled != enabled:

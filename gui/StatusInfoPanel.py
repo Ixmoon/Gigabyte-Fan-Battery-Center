@@ -5,7 +5,7 @@ Status Information Panel QWidget for Fan & Battery Control.
 
 Displays CPU/GPU temperatures, fan RPMs, battery info, and controller status.
 """
-from PyQt6.QtWidgets import QWidget, QGridLayout, QLabel, QFrame
+from .qt import QWidget, QGridLayout, QLabel, QFrame
 
 from tools.localization import tr
 from config.settings import TEMP_READ_ERROR_VALUE, RPM_READ_ERROR_VALUE
@@ -189,7 +189,7 @@ class StatusInfoPanel(QFrame):
 if __name__ == '__main__':
     # Example Usage (for testing the panel independently)
     import sys
-    from PyQt6.QtWidgets import QApplication
+    from .qt import QApplication
     # Mock translations for standalone testing
     _translations = {
         "en": {
@@ -227,7 +227,7 @@ if __name__ == '__main__':
         'current_charge_threshold': 100, 'controller_status_message': 'CPU Temp Read Error.'
     }
     import functools
-    from PyQt6.QtCore import QTimer
+    from .qt import QTimer
     QTimer.singleShot(2000, functools.partial(panel.update_status, test_data_1))
     QTimer.singleShot(5000, functools.partial(panel.update_status, test_data_2))
 

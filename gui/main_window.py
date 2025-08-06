@@ -9,12 +9,11 @@ import sys
 import os
 from typing import List, Optional, NamedTuple
 
-from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFrame, QMessageBox, QSystemTrayIcon, QMenu, QStyle
-from PyQt6.QtCore import (
-    Qt, QTimer,  pyqtSignal, QLocale, QEvent,
-    pyqtSlot, QByteArray
+from .qt import (
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFrame, QMessageBox,
+    QSystemTrayIcon, QMenu, QStyle, Qt, QTimer, Signal, QLocale, QEvent,
+    Slot, QByteArray, QIcon, QAction, QCloseEvent, QShowEvent, QHideEvent
 )
-from PyQt6.QtGui import QIcon, QAction, QCloseEvent, QShowEvent, QHideEvent
 
 from .curve_canvas import CurveCanvas
 # --- MODIFICATION: Import new panel components ---
@@ -68,19 +67,19 @@ class MainWindow(QMainWindow):
     """Main application window."""
 
     # --- Signals to AppRunner ---
-    quit_requested = pyqtSignal()
+    quit_requested = Signal()
     # fan_mode_changed_signal, fixed_speed_changed_signal are removed (handled by FanControlViewModel -> AppRunner)
     # charge_policy_changed_signal, charge_threshold_changed_signal are removed (handled by BatteryControlViewModel -> AppRunner)
-    curve_changed_signal = pyqtSignal(str, object) # curve_type (str), new_data (list/object) - From CurveCanvas
+    curve_changed_signal = Signal(str, object) # curve_type (str), new_data (list/object) - From CurveCanvas
     # profile_activated_signal, profile_save_requested_signal, profile_rename_requested_signal, start_on_boot_changed_signal
     # are removed (handled by CurveControlViewModel -> AppRunner)
-    language_changed_signal = pyqtSignal(str) # lang_code - From SettingsPanel
+    language_changed_signal = Signal(str) # lang_code - From SettingsPanel
     # --- NEW: Signal for background state change ---
-    background_state_changed = pyqtSignal(bool) # True if entering background, False if entering foreground
+    background_state_changed = Signal(bool) # True if entering background, False if entering foreground
     # --- END NEW ---
 
 
-    background_state_changed = pyqtSignal(bool) # True if entering background, False if entering foreground
+    background_state_changed = Signal(bool) # True if entering background, False if entering foreground
     # --- END NEW ---
 
 
@@ -453,7 +452,7 @@ class MainWindow(QMainWindow):
 
     # --- Public Slots for AppRunner ---
 
-    @pyqtSlot(object) # Accepts AppStatus named tuple
+    @Slot(object) # Accepts AppStatus named tuple
     def update_status_display(self, status: AppStatus):
         """Updates all status labels and relevant controls based on AppStatus."""
         self.last_status = status # Store for later use (e.g., redraw on show)
@@ -514,7 +513,7 @@ class MainWindow(QMainWindow):
     # Their logic is now handled by panels internally or by update_status_display delegating to panels.
 
 
-    @pyqtSlot(str, str)
+    @Slot(str, str)
     def show_error_message(self, title: str, message: str):
         """Displays an error message box."""
         if self._is_quitting: return # Don't show errors during shutdown
@@ -528,7 +527,7 @@ class MainWindow(QMainWindow):
                     self._set_transient_status(tr("wmi_error")) # Generic error indication
 
 
-    @pyqtSlot(bool)
+    @Slot(bool)
     def set_controls_enabled_state(self, enabled: bool):
         """Globally enables or disables interactive controls by delegating to panels."""
         if self.status_info_panel:
@@ -557,7 +556,7 @@ class MainWindow(QMainWindow):
         # The old self.update_control_enable_states() is removed as panels handle this internally.
 
 
-    @pyqtSlot(object) # Accepts ProfileSettings dictionary (passed as object)
+    @Slot(object) # Accepts ProfileSettings dictionary (passed as object)
     def apply_profile_to_ui(self, profile_settings_obj: Optional[object]):
         """Updates the UI elements to reflect the given profile settings by delegating to panels."""
         profile_settings = profile_settings_obj if isinstance(profile_settings_obj, dict) else None
@@ -618,7 +617,7 @@ class MainWindow(QMainWindow):
             self.status_info_panel.set_main_status_message(message) # is_transient is handled by usage context
         self._is_showing_transient_status = True # Still used by update_status_display logic
 
-    @pyqtSlot(str) # curve_type from CurveControlPanel's reset_curve_signal
+    @Slot(str) # curve_type from CurveControlPanel's reset_curve_signal
     def on_reset_curve_requested_from_panel(self, active_curve_type: str):
         """Handles reset curve request from CurveControlPanel."""
         curve_name = active_curve_type.upper()
@@ -632,12 +631,12 @@ class MainWindow(QMainWindow):
                 self.curve_control_vm.request_reset_active_curve() # VM will emit signal to AppRunner
             self._set_transient_status(tr("applying_settings"))
 
-    @pyqtSlot(str, int, float, float) # curve_type, index, new_temp, new_speed
+    @Slot(str, int, float, float) # curve_type, index, new_temp, new_speed
     def on_curve_point_dragged(self, curve_type: str, index: int, new_temp: float, new_speed: float):
         """Updates status bar while dragging a curve point (signal from CurveCanvas)."""
         self._set_transient_status(tr("curve_point_tooltip", temp=int(new_temp), speed=int(new_speed)))
 
-    @pyqtSlot(str) # curve_type
+    @Slot(str) # curve_type
     def on_curve_modified(self, curve_type: str):
         """Emits signal when a curve is modified (signal from CurveCanvas)."""
         if self.curve_canvas:
@@ -847,7 +846,7 @@ class MainWindow(QMainWindow):
         super().changeEvent(event)
 
 
-    @pyqtSlot(QSystemTrayIcon.ActivationReason)
+    @Slot(QSystemTrayIcon.ActivationReason)
     def on_tray_icon_activated(self, reason: QSystemTrayIcon.ActivationReason):
         """Handles clicks on the system tray icon."""
         if reason == QSystemTrayIcon.ActivationReason.Trigger or \

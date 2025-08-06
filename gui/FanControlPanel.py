@@ -5,11 +5,10 @@ Fan Control Panel QWidget for Fan & Battery Control.
 
 Contains controls for fan mode (Auto/Manual) and manual fan speed.
 """
-from PyQt6.QtWidgets import (
+from .qt import (
     QWidget, QHBoxLayout, QLabel, QRadioButton, QButtonGroup,
-    QSlider, QSpacerItem, QSizePolicy, QFrame
+    QSlider, QSpacerItem, QSizePolicy, QFrame, Qt, Signal, QTimer, Slot
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer, pyqtSlot # Added pyqtSlot
 
 from tools.localization import tr
 # from config.settings import DEFAULT_PROFILE_SETTINGS # No longer needed for initial speed
@@ -28,7 +27,7 @@ class FanControlPanel(QFrame):
     # MainWindow might still listen for high-level signals if panels emit them,
     # or connect directly to ViewModel signals if VM is passed to MainWindow.
     # For now, assuming direct interaction with passed ViewModel.
-    transient_status_signal = pyqtSignal(str) # For messages like "Applying settings"
+    transient_status_signal = Signal(str) # For messages like "Applying settings"
 
     def __init__(self, view_model: 'FanControlViewModel', parent: QWidget = None):
         super().__init__(parent)
@@ -120,7 +119,7 @@ class FanControlPanel(QFrame):
 
 
     # --- Slots to update UI based on ViewModel changes ---
-    @pyqtSlot(str)
+    @Slot(str)
     def _update_fan_mode_display(self, mode: str):
         """Updates radio buttons based on ViewModel state."""
         is_auto = (mode == "auto")
@@ -135,7 +134,7 @@ class FanControlPanel(QFrame):
         
         self._update_slider_enable_state(not is_auto and self.isEnabled())
 
-    @pyqtSlot(int)
+    @Slot(int)
     def _update_fixed_speed_display(self, speed: int):
         """Updates the slider position and its immediate label based on ViewModel state."""
         self.manual_fan_speed_slider.blockSignals(True)
@@ -144,7 +143,7 @@ class FanControlPanel(QFrame):
         # Update the label next to the slider
         self.manual_fan_speed_value_label.setText(f"{speed}{tr('percent_unit')}")
 
-    @pyqtSlot(int)
+    @Slot(int)
     def _update_applied_speed_label(self, applied_speed: int):
         """Updates the speed label to show the actual applied speed (could be different from slider)."""
         # This method is distinct if we want the label to specifically show *applied* speed
@@ -165,7 +164,7 @@ class FanControlPanel(QFrame):
         # Value label is typically always enabled or its appearance handled by stylesheet.
 
 
-    @pyqtSlot(bool)
+    @Slot(bool)
     def _update_fixed_speed_controls_enabled(self, enabled: bool):
         """Enables/disables the fixed fan speed slider and its associated label."""
         # This specifically targets the slider and its direct label for the locking mechanism.
@@ -199,7 +198,7 @@ class FanControlPanel(QFrame):
         self.manual_fan_speed_label.setEnabled(enabled)
 
 
-    @pyqtSlot(bool)
+    @Slot(bool)
     def set_panel_enabled(self, enabled: bool) -> None:
         """Globally enables or disables all controls in this panel based on ViewModel."""
         self.fan_mode_label.setEnabled(enabled)
@@ -228,7 +227,7 @@ class FanControlPanel(QFrame):
 if __name__ == '__main__':
     # Example Usage
     import sys
-    from PyQt6.QtWidgets import QApplication, QMainWindow
+    from .qt import QApplication, QMainWindow
 
     _translations = {
         "en": {

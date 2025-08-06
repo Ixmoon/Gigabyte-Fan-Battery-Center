@@ -15,8 +15,7 @@ from matplotlib.figure import Figure
 import matplotlib.lines as lines
 from matplotlib.backend_bases import MouseButton
 
-from PyQt6.QtWidgets import QSizePolicy, QMessageBox
-from PyQt6.QtCore import pyqtSignal
+from .qt import QSizePolicy, QMessageBox, Signal
 
 # Import settings for defaults and limits
 from config.settings import (
@@ -35,9 +34,9 @@ class CurveCanvas(FigureCanvas):
     """Matplotlib canvas for interactive fan curve editing."""
 
     # ... (signals remain the same) ...
-    point_dragged = pyqtSignal(CurveType, int, float, float) # curve_type, index, temp, speed
-    curve_changed = pyqtSignal(CurveType) # curve_type (emitted after drag release or point add/delete)
-    point_selected = pyqtSignal(CurveType, int) # curve_type, index (-1 if no point selected)
+    point_dragged = Signal(CurveType, int, float, float) # curve_type, index, temp, speed
+    curve_changed = Signal(CurveType) # curve_type (emitted after drag release or point add/delete)
+    point_selected = Signal(CurveType, int) # curve_type, index (-1 if no point selected)
 
 
     def __init__(self, parent=None, width=5, height=4, dpi=100):

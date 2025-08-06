@@ -3,7 +3,7 @@
 """
 ViewModel for BatteryControlPanel.
 """
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
+from gui.qt import QObject, Signal, Slot
 
 from typing import Optional, TYPE_CHECKING
 if TYPE_CHECKING:
@@ -15,12 +15,12 @@ class BatteryControlViewModel(QObject):
     Communicates changes to AppRunner and updates BatteryControlPanel via signals.
     """
     # Signals to notify BatteryControlPanel (View) of state changes
-    charge_policy_updated = pyqtSignal(str) # 'standard' or 'custom'
-    charge_threshold_updated = pyqtSignal(int) # current threshold for display
-    applied_charge_threshold_updated = pyqtSignal(int) # actual applied threshold from status
-    panel_enabled_changed = pyqtSignal(bool) # To enable/disable the panel
-    charge_limit_control_enabled_updated = pyqtSignal(bool) # True if custom policy, False otherwise
-    threshold_slider_lock_updated = pyqtSignal(bool) # True to lock slider, False to unlock
+    charge_policy_updated = Signal(str) # 'standard' or 'custom'
+    charge_threshold_updated = Signal(int) # current threshold for display
+    applied_charge_threshold_updated = Signal(int) # actual applied threshold from status
+    panel_enabled_changed = Signal(bool) # To enable/disable the panel
+    charge_limit_control_enabled_updated = Signal(bool) # True if custom policy, False otherwise
+    threshold_slider_lock_updated = Signal(bool) # True to lock slider, False to unlock
 
     def __init__(self, app_runner: 'AppRunner', parent: Optional[QObject] = None):
         super().__init__(parent)
@@ -46,7 +46,7 @@ class BatteryControlViewModel(QObject):
         return self._is_panel_enabled
 
     # --- Slots for BatteryControlPanel (View) to call ---
-    @pyqtSlot(str)
+    @Slot(str)
     def set_charge_policy(self, policy: str):
         """Called by BatteryControlPanel when user changes charge policy."""
         if policy not in ["standard", "custom"]:
@@ -63,7 +63,7 @@ class BatteryControlViewModel(QObject):
             # No need to explicitly call set_charge_threshold here if policy becomes "custom",
             # as set_charge_policy_for_hardware in AppRunner will handle applying the current threshold.
 
-    @pyqtSlot(int)
+    @Slot(int)
     def set_charge_threshold(self, threshold: int):
         """Called by BatteryControlPanel when user changes charge threshold slider."""
         if self._is_threshold_applying:
@@ -85,7 +85,7 @@ class BatteryControlViewModel(QObject):
                 self.charge_threshold_updated.emit(self._current_charge_threshold)
 
 
-    @pyqtSlot(int)
+    @Slot(int)
     def confirm_charge_threshold_applied(self, applied_threshold: int):
         """Called by AppRunner after charge threshold has been confirmed by hardware."""
         self._current_charge_threshold = applied_threshold
@@ -98,7 +98,7 @@ class BatteryControlViewModel(QObject):
         self.threshold_slider_lock_updated.emit(True) # Re-enable slider (unlock)
 
     # --- Slots for AppRunner (Model/Controller) to call ---
-    @pyqtSlot(str)
+    @Slot(str)
     def update_charge_policy_from_status(self, policy: Optional[str]):
         """Called by AppRunner with current charge policy from hardware/status."""
         # Handle cases where policy might be None from status if unknown
@@ -108,7 +108,7 @@ class BatteryControlViewModel(QObject):
             self.charge_policy_updated.emit(self._current_charge_policy)
             self.charge_limit_control_enabled_updated.emit(self._current_charge_policy == "custom")
 
-    @pyqtSlot(int)
+    @Slot(int)
     def update_applied_charge_threshold_from_status(self, threshold: int):
         """Called by AppRunner with current applied charge threshold from hardware/status."""
         if self._applied_charge_threshold != threshold:
@@ -119,7 +119,7 @@ class BatteryControlViewModel(QObject):
                 self._current_charge_threshold = threshold
                 self.charge_threshold_updated.emit(self._current_charge_threshold)
 
-    @pyqtSlot(bool)
+    @Slot(bool)
     def set_panel_enabled(self, enabled: bool):
         """Called by AppRunner/MainWindow to globally enable/disable controls."""
         if self._is_panel_enabled != enabled:

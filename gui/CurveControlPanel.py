@@ -6,12 +6,11 @@ Curve Control Panel QWidget for Fan & Battery Control.
 Contains controls for selecting curve type (CPU/GPU), managing profiles,
 toggling start on boot, and resetting curves.
 """
-from PyQt6.QtWidgets import (
+from .qt import (
     QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QButtonGroup, QCheckBox,
-    QSpacerItem, QSizePolicy, QFrame, QInputDialog, QMessageBox
+    QSpacerItem, QSizePolicy, QFrame, QInputDialog, QMessageBox,
+    Signal, Qt, QEvent, QObject, QLineEdit
 )
-from PyQt6.QtCore import pyqtSignal, Qt, QEvent, QObject
-from PyQt6.QtWidgets import QLineEdit # Keep for QInputDialog if used within panel
 
 from typing import List, Optional, TYPE_CHECKING
 
@@ -27,7 +26,7 @@ class CurveControlPanel(QFrame):
     A QFrame subclass that groups controls related to curve and profile management.
     Interacts with a ViewModel for its logic and state.
     """
-    transient_status_signal = pyqtSignal(str) # Signal to MainWindow to show a temporary status
+    transient_status_signal = Signal(str) # Signal to MainWindow to show a temporary status
 
     def __init__(self, view_model: 'CurveControlViewModel', parent: QWidget = None):
         """
@@ -282,7 +281,7 @@ class CurveControlPanel(QFrame):
 if __name__ == '__main__':
     # Example Usage
     import sys
-    from PyQt6.QtWidgets import QApplication, QMainWindow, QLineEdit # Added QLineEdit for QInputDialog
+    from .qt import QApplication, QMainWindow, QLineEdit
 
     _translations = {
         "en": {

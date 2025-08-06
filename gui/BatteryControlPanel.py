@@ -5,11 +5,10 @@ Battery Control Panel QWidget for Fan & Battery Control.
 
 Contains controls for charge policy (Standard/Custom) and custom charge threshold.
 """
-from PyQt6.QtWidgets import (
+from .qt import (
     QWidget, QHBoxLayout, QLabel, QRadioButton, QButtonGroup,
-    QSlider, QSpacerItem, QSizePolicy, QFrame
+    QSlider, QSpacerItem, QSizePolicy, QFrame, Qt, Signal, Slot, QTimer
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer, pyqtSlot # Added pyqtSlot
 from typing import TYPE_CHECKING
 
 from tools.localization import tr
@@ -24,7 +23,7 @@ class BatteryControlPanel(QFrame):
     A QFrame subclass that groups controls related to battery management.
     Interacts with a ViewModel for its logic and state.
     """
-    transient_status_signal = pyqtSignal(str) # Signal to MainWindow to show a temporary status
+    transient_status_signal = Signal(str) # Signal to MainWindow to show a temporary status
 
     def __init__(self, view_model: 'BatteryControlViewModel', parent: QWidget = None):
         """
@@ -116,7 +115,7 @@ class BatteryControlPanel(QFrame):
         self.view_model.threshold_slider_lock_updated.connect(self._update_threshold_slider_lock_state)
 
 
-    @pyqtSlot(int) # New slot to handle applied_charge_threshold_updated signal
+    @Slot(int) # New slot to handle applied_charge_threshold_updated signal
     def _handle_applied_threshold_update_from_vm(self, applied_threshold: int):
         """Handles updates to the applied threshold from the ViewModel."""
         is_custom = self.view_model.get_current_charge_policy() == "custom"
@@ -153,7 +152,7 @@ class BatteryControlPanel(QFrame):
         self.charge_policy_button_group.blockSignals(False)
         self._update_charge_limit_controls_enabled(policy == "custom")
 
-    @pyqtSlot(int) # Slot for charge_threshold_updated signal (which carries ui_threshold)
+    @Slot(int) # Slot for charge_threshold_updated signal (which carries ui_threshold)
     def _slot_for_ui_threshold_updated(self, ui_threshold: int) -> None:
         """Handles updates to the UI-driven threshold (e.g., slider position)."""
         # Get other needed info from ViewModel
@@ -200,7 +199,7 @@ class BatteryControlPanel(QFrame):
         elif not enabled and not (current_text.startswith("(") and current_text.endswith(")")):
             self.charge_threshold_value_label.setText(f"({current_text})")
 
-    @pyqtSlot(bool)
+    @Slot(bool)
     def _update_threshold_slider_lock_state(self, locked: bool) -> None:
         """
         Locks or unlocks the charge threshold slider.
@@ -258,7 +257,7 @@ class BatteryControlPanel(QFrame):
 if __name__ == '__main__':
     # Example Usage
     import sys
-    from PyQt6.QtWidgets import QApplication, QMainWindow
+    from .qt import QApplication, QMainWindow
 
     _translations = {
         "en": {

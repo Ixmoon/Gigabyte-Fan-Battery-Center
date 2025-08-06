@@ -37,8 +37,7 @@ except Exception as e:
     print(f"Fatal: Could not change working directory to '{BASE_DIR}'. External files will not be found. Error: {e}", file=sys.stderr)
 
 # --- Import Project Modules ---
-from PyQt6.QtWidgets import QApplication, QMessageBox
-from PyQt6.QtCore import QCoreApplication, QTimer, QMetaObject, Qt # Added QMetaObject, Qt
+from gui.qt import QApplication, QMessageBox, QCoreApplication, QTimer, QMetaObject, Qt
 
 from config.settings import (
     APP_NAME, APP_ORGANIZATION_NAME, APP_INTERNAL_NAME, STARTUP_ARG_MINIMIZED,

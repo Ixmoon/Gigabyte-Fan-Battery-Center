@@ -9,8 +9,7 @@ import sys
 import time
 from typing import Optional, List, Dict, Any
 
-from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import QObject, QTimer, pyqtSlot, QCoreApplication
+from gui.qt import QApplication, QObject, QTimer, Slot, QCoreApplication
 
 # Import core components
 from core.wmi_interface import WMIInterface
@@ -164,7 +163,7 @@ class AppRunner(QObject):
             self.curve_control_vm.update_start_on_boot_status(False)
             # MainWindow's start_on_boot_checkbox is managed by CurveControlPanel via CurveControlViewModel
 
-    @pyqtSlot()
+    @Slot()
     def perform_status_update(self):
         """Periodically called by status timer to read sensors and update ViewModels and StatusInfoPanel."""
         if self._is_shutting_down or not self.wmi_interface._is_running or self._is_in_background:
@@ -301,7 +300,7 @@ class AppRunner(QObject):
                 QTimer.singleShot(1000, self._reset_status_message) # This resets global status, not the lock.
 
 
-    @pyqtSlot(str, object)
+    @Slot(str, object)
     def handle_curve_change(self, curve_type: str, new_data_obj: object):
         """Handles changes to a fan curve from the CurveCanvas via MainWindow."""
         if not self._is_in_background:
@@ -319,7 +318,7 @@ class AppRunner(QObject):
         gpu_curve = self._current_profile.get("gpu_fan_table", DEFAULT_PROFILE_SETTINGS['gpu_fan_table'])
         self.auto_temp_controller.update_curves(cpu_curve, gpu_curve)
 
-    @pyqtSlot(str)
+    @Slot(str)
     def handle_profile_activation(self, profile_name: str, is_initial_load: bool = False):
         """Loads and applies settings from the selected profile."""
         if not is_initial_load and not self._is_in_background:
@@ -379,7 +378,7 @@ class AppRunner(QObject):
             else: self._controller_status_message = tr("wmi_error")
 
 
-    @pyqtSlot(str) # Changed signature to match CurveControlViewModel.profile_to_save_signal
+    @Slot(str) # Changed signature to match CurveControlViewModel.profile_to_save_signal
     def handle_profile_save(self, profile_name: str):
         """
         Saves the current UI settings (collected from MainWindow, which queries ViewModels and Canvas)
@@ -409,7 +408,7 @@ class AppRunner(QObject):
             QTimer.singleShot(2000, self._reset_status_message)
 
 
-    @pyqtSlot(str, str)
+    @Slot(str, str)
     def handle_profile_rename(self, old_name: str, new_name: str):
         """Renames a profile. Called by MainWindow (relayed from CurveControlViewModel)."""
         if not self._is_in_background:
@@ -438,7 +437,7 @@ class AppRunner(QObject):
                  self._reset_status_message()
 
 
-    @pyqtSlot(str)
+    @Slot(str)
     def handle_language_change(self, lang_code: str):
         """Handles language change request from GUI (SettingsPanel via MainWindow)."""
         set_language(lang_code)
@@ -448,7 +447,7 @@ class AppRunner(QObject):
             self.main_window.retranslate_ui() # MainWindow tells all its children (panels, canvas) to retranslate
             self._reset_status_message()
 
-    @pyqtSlot()
+    @Slot()
     def handle_curve_reset_request(self):
         """Handles request to reset the active curve to its default."""
         active_curve_type = self.curve_control_vm.current_curve_type # VM should provide this
@@ -499,7 +498,7 @@ class AppRunner(QObject):
             QTimer.singleShot(1500, self._reset_status_message)
 
 
-    @pyqtSlot(bool)
+    @Slot(bool)
     def handle_start_on_boot_change(self, enabled: bool):
         """
         Creates or deletes the startup task.
@@ -569,7 +568,7 @@ class AppRunner(QObject):
         if not self._is_in_background:
              QTimer.singleShot(0, self.perform_status_update) # perform_status_update will call _emit_status_to_mainwindow
 
-    @pyqtSlot(bool)
+    @Slot(bool)
     def set_background_state(self, is_background: bool):
         """Handles transitions between foreground and background operation."""
         if self._is_shutting_down or self._is_in_background == is_background:
@@ -585,7 +584,7 @@ class AppRunner(QObject):
             QTimer.singleShot(50, self.perform_status_update)
 
 
-    @pyqtSlot()
+    @Slot()
     def shutdown(self):
         """Performs graceful shutdown of components."""
         if self._is_shutting_down: return

@@ -3,7 +3,7 @@
 """
 ViewModel for FanControlPanel.
 """
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
+from gui.qt import QObject, Signal, Slot
 
 from typing import Optional, TYPE_CHECKING
 if TYPE_CHECKING:
@@ -16,11 +16,11 @@ class FanControlViewModel(QObject):
     Communicates changes to AppRunner and updates FanControlPanel via signals.
     """
     # Signals to notify FanControlPanel (View) of state changes
-    fan_mode_updated = pyqtSignal(str) # 'auto' or 'fixed'
-    fixed_speed_updated = pyqtSignal(int) # current speed for display
-    applied_fixed_speed_updated = pyqtSignal(int) # actual applied speed from status
-    panel_enabled_changed = pyqtSignal(bool) # To enable/disable the panel
-    fixed_speed_control_enabled_updated = pyqtSignal(bool) # To enable/disable fixed speed slider during apply
+    fan_mode_updated = Signal(str) # 'auto' or 'fixed'
+    fixed_speed_updated = Signal(int) # current speed for display
+    applied_fixed_speed_updated = Signal(int) # actual applied speed from status
+    panel_enabled_changed = Signal(bool) # To enable/disable the panel
+    fixed_speed_control_enabled_updated = Signal(bool) # To enable/disable fixed speed slider during apply
 
     # Signals to AppRunner (or a future service layer) are handled by direct calls for now
 
@@ -49,7 +49,7 @@ class FanControlViewModel(QObject):
         return self._is_panel_enabled
 
     # --- Slots for FanControlPanel (View) to call ---
-    @pyqtSlot(str)
+    @Slot(str)
     def set_fan_mode(self, mode: str):
         """Called by FanControlPanel when user changes fan mode."""
         if mode not in ["auto", "fixed"]:
@@ -63,7 +63,7 @@ class FanControlViewModel(QObject):
             # No need to explicitly call set_fixed_fan_speed here if mode becomes "fixed",
             # as set_fan_mode_for_hardware in AppRunner will handle applying the current fixed speed.
 
-    @pyqtSlot(int)
+    @Slot(int)
     def set_fixed_speed(self, speed: int):
         """Called by FanControlPanel when user changes fixed fan speed slider."""
         if self._is_fixed_speed_applying:
@@ -91,7 +91,7 @@ class FanControlViewModel(QObject):
                 self.fixed_speed_updated.emit(self._current_fixed_speed)
 
 
-    @pyqtSlot(int)
+    @Slot(int)
     def confirm_fixed_speed_applied(self, applied_speed: int):
         """Called by AppRunner after fixed speed has been confirmed by hardware."""
         self._current_fixed_speed = applied_speed # Update to the actual applied speed
@@ -104,14 +104,14 @@ class FanControlViewModel(QObject):
         self.fixed_speed_control_enabled_updated.emit(True) # Re-enable slider
 
     # --- Slots for AppRunner (Model/Controller) to call to update ViewModel state ---
-    @pyqtSlot(str)
+    @Slot(str)
     def update_fan_mode_from_status(self, mode: str):
         """Called by AppRunner with current fan mode from hardware/status."""
         if self._current_fan_mode != mode:
             self._current_fan_mode = mode
             self.fan_mode_updated.emit(self._current_fan_mode)
 
-    @pyqtSlot(int)
+    @Slot(int)
     def update_applied_fixed_speed_from_status(self, speed: int):
         """Called by AppRunner with current applied fixed fan speed from hardware/status."""
         if self._applied_fixed_speed != speed:
@@ -124,7 +124,7 @@ class FanControlViewModel(QObject):
                 self.fixed_speed_updated.emit(self._current_fixed_speed)
 
 
-    @pyqtSlot(bool)
+    @Slot(bool)
     def set_panel_enabled(self, enabled: bool):
         """Called by AppRunner/MainWindow to globally enable/disable controls."""
         if self._is_panel_enabled != enabled:

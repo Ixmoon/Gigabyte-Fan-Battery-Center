@@ -282,7 +282,7 @@ class ConfigManager:
             print(f"Error - {error_title}: {error_msg}", file=sys.stderr) # Print error as GUI might not be up
             # Show message box if possible (requires QApplication instance)
             try:
-                from PyQt6.QtWidgets import QMessageBox, QApplication
+                from gui.qt import QMessageBox, QApplication
                 if QApplication.instance():
                     QMessageBox.warning(None, error_title, error_msg)
             except ImportError:
@@ -339,7 +339,7 @@ class ConfigManager:
             error_msg = tr("config_save_error_msg", filename=self.filename, error=str(e))
             print(f"Error - {error_title}: {error_msg}", file=sys.stderr)
             try:
-                from PyQt6.QtWidgets import QMessageBox, QApplication
+                from gui.qt import QMessageBox, QApplication
                 if QApplication.instance():
                     QMessageBox.critical(None, error_title, error_msg)
             except ImportError:
@@ -349,7 +349,7 @@ class ConfigManager:
             error_msg = tr("config_save_error_msg", filename=self.filename, error=f"Unexpected error: {e}")
             print(f"Error - {error_title}: {error_msg}", file=sys.stderr)
             try:
-                from PyQt6.QtWidgets import QMessageBox, QApplication
+                from gui.qt import QMessageBox, QApplication
                 if QApplication.instance():
                     QMessageBox.critical(None, error_title, error_msg)
             except ImportError:

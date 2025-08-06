@@ -5,10 +5,10 @@ Settings Panel QWidget for Fan & Battery Control.
 
 Contains controls for application settings like language.
 """
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QFrame
+from .qt import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QFrame,
+    Signal, Qt, QTimer
 )
-from PyQt6.QtCore import pyqtSignal, Qt, QTimer
 
 from tools.localization import tr, get_available_languages, get_current_language
 
@@ -16,8 +16,8 @@ class SettingsPanel(QFrame):
     """
     A QFrame subclass that groups application settings controls.
     """
-    language_changed_signal = pyqtSignal(str) # lang_code
-    transient_status_signal = pyqtSignal(str) # For MainWindow to show temporary status
+    language_changed_signal = Signal(str) # lang_code
+    transient_status_signal = Signal(str) # For MainWindow to show temporary status
 
     def __init__(self, parent: QWidget = None):
         """
@@ -107,7 +107,7 @@ class SettingsPanel(QFrame):
 if __name__ == '__main__':
     # Example Usage
     import sys
-    from PyQt6.QtWidgets import QApplication, QMainWindow
+    from .qt import QApplication, QMainWindow
     from tools.localization import load_translations # Need to load some dummy translations
 
     # Mock languages.json content for standalone testing

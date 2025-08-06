@@ -12,7 +12,7 @@ from scipy.interpolate import PchipInterpolator
 import sys
 
 # --- NEW: Import QTimer and dependencies ---
-from PyQt6.QtCore import QObject, QTimer, pyqtSlot
+from gui.qt import QObject, QTimer, Slot
 
 # --- MODIFICATION: Import dependencies directly ---
 from .wmi_interface import WMIInterface
@@ -210,7 +210,7 @@ class AutoTemperatureController(QObject):
         step_size = max(self._min_step, min(self._max_step, step_size))
         return max(1, step_size)
 
-    @pyqtSlot()
+    @Slot()
     def _perform_adjustment_step(self):
         """
         Internal slot called by the timer. Reads temps, determines target,
