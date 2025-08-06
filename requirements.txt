@@ -1,7 +1,16 @@
-PyQt6
-matplotlib
-numpy
-scipy
-WMI
-pywin32
-PyInstaller
+# PyQt6 - GUI Framework
+PyQt6~=6.7.0
+PyQt6-Qt6~=6.7.0
+PyQt6-sip~=13.6.0
+
+# Matplotlib and its core dependencies for plotting
+matplotlib~=3.9.0
+numpy~=1.26.0
+scipy~=1.13.0
+
+# Windows specific APIs for WMI and single instance check
+pywin32~=306.0
+pypiwin32~=223.0
+
+# Certificate validation, often a dependency of other libraries
+certifi~=2024.7.4

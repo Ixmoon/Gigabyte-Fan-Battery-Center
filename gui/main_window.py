@@ -9,7 +9,7 @@ import sys
 import os
 from typing import List, Optional, NamedTuple
 
-from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFrame, QMessageBox, QSystemTrayIcon, QMenu
+from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFrame, QMessageBox, QSystemTrayIcon, QMenu, QStyle
 from PyQt6.QtCore import (
     Qt, QTimer,  pyqtSignal, QLocale, QEvent,
     pyqtSlot, QByteArray
@@ -262,43 +262,36 @@ class MainWindow(QMainWindow):
     #     self.language_combo.blockSignals(False)
 
     def init_tray_icon(self):
-        """Initializes the system tray icon and menu with a fallback mechanism."""
+        """Initializes the system tray icon and menu with a robust fallback mechanism."""
         if not QSystemTrayIcon.isSystemTrayAvailable():
             self.tray_icon = None
             return
 
         self.tray_icon = QSystemTrayIcon(self)
         
-        app_icon = None
-        
-        # 1. Try to load the external, user-replaceable icon first.
+        # --- Step 1: Attempt to load the external icon file ---
         external_icon_path = os.path.join(self.config_manager.base_dir, APP_ICON_NAME)
-        if os.path.exists(external_icon_path):
-            icon_from_file = QIcon(external_icon_path)
-            if not icon_from_file.isNull():
-                app_icon = icon_from_file
-            else:
-                print(f"Warning: External icon file '{external_icon_path}' found but is invalid or corrupt.", file=sys.stderr)
+        external_icon = QIcon(external_icon_path)
 
-        # 2. If external icon failed, try the icon embedded in the executable (for packaged app).
-        if app_icon is None and getattr(sys, 'frozen', False):
-            try:
-                embedded_icon_path = sys.executable
-                icon_from_exe = QIcon(embedded_icon_path)
-                if not icon_from_exe.isNull():
-                    app_icon = icon_from_exe
-                else:
-                    print("Warning: Could not load icon embedded in the executable.", file=sys.stderr)
-            except Exception as e:
-                print(f"Error trying to load embedded icon: {e}", file=sys.stderr)
-
-        # 3. Apply the loaded icon or use a final, generic system fallback.
-        if app_icon:
-            self.tray_icon.setIcon(app_icon)
-            self.setWindowIcon(app_icon)
+        if not external_icon.isNull():
+            # External icon loaded successfully, apply it everywhere.
+            print(f"Successfully loaded external icon from: {external_icon_path}")
+            self.setWindowIcon(external_icon)
+            self.tray_icon.setIcon(external_icon)
         else:
-            print("Warning: No valid external or embedded icon found. Using generic system default icon.", file=sys.stderr)
-            self._use_default_icon()
+            # --- Step 2: Fallback to the window's default icon (provided by OS from .exe) ---
+            # If the external icon fails, we don't try to load anything else.
+            # We assume the OS has already set the window's icon from the embedded resource.
+            # We just grab that icon and apply it to the tray.
+            print("External icon not found or invalid. Falling back to window's default icon (from .exe).")
+            window_icon = self.windowIcon() # Get the icon set by the OS
+            if not window_icon.isNull():
+                self.tray_icon.setIcon(window_icon)
+            else:
+                # --- Step 3: Ultimate fallback to a generic system icon ---
+                # This happens if the .exe has no embedded icon AND external icon is missing.
+                print("Warning: No valid embedded or external icon found. Using generic system icon.")
+                self._use_default_icon()
 
         self.tray_icon.setToolTip(APP_NAME)
 
@@ -309,7 +302,7 @@ class MainWindow(QMainWindow):
         tray_menu.addAction(show_hide_action)
         tray_menu.addSeparator()
         quit_action = QAction(tr("tray_menu_quit"), self)
-        quit_action.triggered.connect(self._request_quit) # Internal signal first
+        quit_action.triggered.connect(self._request_quit)
         tray_menu.addAction(quit_action)
         self.tray_icon.setContextMenu(tray_menu)
 
@@ -321,12 +314,11 @@ class MainWindow(QMainWindow):
             self.tray_icon.show()
 
     def _use_default_icon(self):
-        """Sets a default system icon if the custom one fails."""
-        style = self.style()
-        # Try common standard pixmaps
-        default_icon = style.standardIcon(getattr(style.StandardPixmap, "SP_ComputerIcon", style.StandardPixmap.SP_DesktopIcon))
-        if self.tray_icon: self.tray_icon.setIcon(default_icon)
+        """Sets a generic system icon as the last resort."""
+        default_icon = self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
         self.setWindowIcon(default_icon)
+        if self.tray_icon:
+            self.tray_icon.setIcon(default_icon)
 
     def connect_signals(self):
         """Connects signals from UI components to MainWindow's handlers or re-emits them."""

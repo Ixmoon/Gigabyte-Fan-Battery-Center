@@ -14,20 +14,27 @@ import atexit
 import ctypes # For admin check message box fallback
 from typing import Optional
 
-# --- Early Setup: Define Base Directory ---
+# --- Early Setup: Define Base Directory (Robust Method) ---
+# This logic correctly handles script, standalone, and onefile modes.
 try:
     if getattr(sys, 'frozen', False):
-        BASE_DIR = os.path.dirname(sys.executable)
+        # Packaged mode (Nuitka/PyInstaller)
+        # sys.argv[0] is the reliable path to the original executable
+        BASE_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
     else:
+        # Script mode
+        # __file__ is the path to the current script
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-except NameError:
+except Exception:
+    # Fallback for environments where __file__ or sys.argv[0] might be missing
     BASE_DIR = os.getcwd()
 
 # --- Change Working Directory ---
+# This is CRITICAL for onefile mode to find external config/language files.
 try:
     os.chdir(BASE_DIR)
 except Exception as e:
-    print(f"Warning: Could not change working directory to '{BASE_DIR}': {e}", file=sys.stderr)
+    print(f"Fatal: Could not change working directory to '{BASE_DIR}'. External files will not be found. Error: {e}", file=sys.stderr)
 
 # --- Import Project Modules ---
 from PyQt6.QtWidgets import QApplication, QMessageBox

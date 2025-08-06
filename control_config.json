@@ -1,7 +1,7 @@
 {
     "app_version": "1.0.0",
     "language": "en",
-    "start_on_boot": true,
+    "start_on_boot": false,
     "window_geometry": null,
     "active_profile_name": "Configuration 1",
     "profiles": {
