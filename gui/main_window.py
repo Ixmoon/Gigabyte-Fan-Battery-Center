@@ -26,7 +26,7 @@ from .CurveControlPanel import CurveControlPanel
 from .FanControlPanel import FanControlPanel
 from .BatteryControlPanel import BatteryControlPanel
 from .SettingsPanel import SettingsPanel
-from .custom_title_bar import CustomTitleBar
+# from .custom_title_bar import CustomTitleBar # Removed
 # --- END MODIFICATION ---
 
 # --- ViewModel Imports ---
@@ -121,7 +121,7 @@ class MainWindow(QMainWindow):
         # as they are now encapsulated within their respective panel components.
 
         # --- NEW: Declare panel members ---
-        self.title_bar: Optional[CustomTitleBar] = None
+        # self.title_bar: Optional[CustomTitleBar] = None # Removed
         self.status_info_panel: Optional[StatusInfoPanel] = None
         self.curve_control_panel: Optional[CurveControlPanel] = None
         self.fan_control_panel: Optional[FanControlPanel] = None
@@ -186,9 +186,56 @@ class MainWindow(QMainWindow):
         overall_layout.setContentsMargins(0, 0, 0, 0)
         overall_layout.setSpacing(0)
 
-        # --- Custom Title Bar ---
-        self.title_bar = CustomTitleBar(self)
-        overall_layout.addWidget(self.title_bar)
+        # --- Custom Title Bar (Integrated) ---
+        title_bar_widget = QWidget()
+        title_bar_widget.setObjectName("customTitleBar")
+        title_bar_widget.setFixedHeight(40)
+        title_bar_layout = QHBoxLayout(title_bar_widget)
+        title_bar_layout.setContentsMargins(10, 0, 5, 0)
+        title_bar_layout.setSpacing(10)
+
+        self.icon_label = QLabel(self)
+        self.icon_label.setFixedSize(QSize(24, 24))
+        self.icon_label.setScaledContents(True)
+
+        self.title_label = QLabel(tr("window_title"), self)
+        self.title_label.setObjectName("titleBarLabel")
+
+        self.status_label = QLabel(self)
+        self.status_label.setObjectName("statusLabel")
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.language_combo = QComboBox()
+        self._populate_language_combo() # This method will be moved into MainWindow
+        self.language_combo.currentIndexChanged.connect(self._on_language_changed) # This method will be moved
+
+        title_bar_layout.addWidget(self.icon_label)
+        title_bar_layout.addWidget(self.title_label)
+        title_bar_layout.addStretch(1)
+        title_bar_layout.addWidget(self.status_label)
+        title_bar_layout.addStretch(1)
+        title_bar_layout.addWidget(self.language_combo)
+        title_bar_layout.addSpacing(10)
+
+        self.minimize_button = QPushButton("—")
+        self.maximize_button = QPushButton("□")
+        self.close_button = QPushButton("✕")
+        self.minimize_button.setObjectName("windowControlButton")
+        self.maximize_button.setObjectName("windowControlButton")
+        self.close_button.setObjectName("windowControlButton_close")
+
+        for btn in [self.minimize_button, self.maximize_button, self.close_button]:
+            btn.setFixedSize(QSize(30, 30))
+
+        title_bar_layout.addWidget(self.minimize_button)
+        title_bar_layout.addWidget(self.maximize_button)
+        title_bar_layout.addWidget(self.close_button)
+
+        self.minimize_button.clicked.connect(self.showMinimized)
+        self.maximize_button.clicked.connect(self._toggle_maximize)
+        self.close_button.clicked.connect(self.close)
+
+        overall_layout.addWidget(title_bar_widget)
         # --- End Custom Title Bar ---
 
         # Content widget
@@ -288,8 +335,7 @@ class MainWindow(QMainWindow):
 
         self.setWindowIcon(final_icon)
         self.tray_icon.setIcon(final_icon)
-        if self.title_bar:
-            self.title_bar.set_window_icon(final_icon)
+        self.icon_label.setPixmap(final_icon.pixmap(QSize(24, 24)))
  
         self.tray_icon.setToolTip(tr("window_title"))
  
@@ -317,19 +363,10 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(default_icon)
         if self.tray_icon:
             self.tray_icon.setIcon(default_icon)
-        if self.title_bar:
-            self.title_bar.set_window_icon(default_icon)
+        self.icon_label.setPixmap(default_icon.pixmap(QSize(24, 24)))
 
     def connect_signals(self):
         """Connects signals from UI components to MainWindow's handlers or re-emits them."""
-        # Connect signals from the custom title bar
-        if self.title_bar:
-            self.title_bar.minimize_requested.connect(self.showMinimized)
-            self.title_bar.maximize_requested.connect(self._toggle_maximize)
-            self.title_bar.close_requested.connect(self.close)
-            self.title_bar.language_changed.connect(self.language_changed_signal)
-            self.title_bar.mouse_pressed.connect(self._handle_title_bar_press)
-
         # Signals from FanControlPanel and BatteryControlPanel are now handled by their ViewModels
         # which call AppRunner directly. Transient status signals can remain if panels define them.
         if self.fan_control_panel and hasattr(self.fan_control_panel, 'transient_status_signal'):
@@ -521,11 +558,10 @@ class MainWindow(QMainWindow):
         if not is_dragging and not self._is_showing_transient_status:
             status_key = status.controller_status_message
             # If the key is not an empty string, translate and display it. Otherwise, clear the label.
-            if self.title_bar:
-                if status_key:
-                    self.title_bar.set_status_message(tr(status_key))
-                else:
-                    self.title_bar.set_status_message("")
+            if status_key:
+                self.status_label.setText(tr(status_key))
+            else:
+                self.status_label.setText("")
 
 
     # --- REMOVED DEPRECATED METHODS ---
@@ -562,8 +598,9 @@ class MainWindow(QMainWindow):
 
         # The title bar elements are standard widgets, no need to disable them globally here.
         # Individual controls like language_combo can be disabled if needed.
-        if self.title_bar:
-            self.title_bar.setEnabled(enabled)
+        self.language_combo.setEnabled(enabled)
+        self.minimize_button.setEnabled(enabled)
+        self.maximize_button.setEnabled(enabled)
         # Keep close button always enabled
         
         if self.curve_canvas:
@@ -633,8 +670,8 @@ class MainWindow(QMainWindow):
 
     def _set_transient_status(self, message: str):
         """Sets a transient status message on the title bar."""
-        if self._is_window_visible and self.title_bar:
-            self.title_bar.set_status_message(message)
+        if self._is_window_visible:
+            self.status_label.setText(message)
         self._is_showing_transient_status = True
 
     @Slot(str) # curve_type from CurveControlPanel's reset_curve_signal
@@ -730,8 +767,8 @@ class MainWindow(QMainWindow):
     def retranslate_ui(self):
         """Retranslates all user-visible text in the UI by delegating to panels."""
         self.setWindowTitle(tr("window_title"))
-        if self.title_bar:
-            self.title_bar.retranslate_ui()
+        self.title_label.setText(tr("window_title"))
+        self._populate_language_combo()
 
         if self.status_info_panel:
             self.status_info_panel.retranslate_ui()
@@ -771,8 +808,7 @@ class MainWindow(QMainWindow):
             # If there's no status yet, panels should show their initial translated placeholder texts.
             # This should be handled by each panel's retranslate_ui or their init.
             # MainWindow might set an initial global status message via StatusInfoPanel.
-            if self.title_bar:
-                self.title_bar.set_status_message(tr("initializing"))
+            self.status_label.setText(tr("initializing"))
             self._is_showing_transient_status = True
 
         # Old logic for updating individual value labels (e.g. self.cpu_temp_value.setText)
@@ -780,9 +816,31 @@ class MainWindow(QMainWindow):
         # is now handled within each panel's retranslate_ui or by the update_status_display call.
 
     # --- Language Combo Methods (Moved from CustomTitleBar) ---
-    # These methods are now removed from MainWindow as they are handled by CustomTitleBar.
-    # def _populate_language_combo(self): ...
-    # def _on_language_changed(self, index: int): ...
+    def _populate_language_combo(self):
+        """Populates the language selection QComboBox."""
+        self.language_combo.blockSignals(True)
+        self.language_combo.clear()
+        current_lang_code = get_current_language()
+        available_langs = get_available_languages()
+        
+        current_idx = 0
+        codes_in_order = sorted(available_langs.keys())
+
+        for i, code in enumerate(codes_in_order):
+            display_name = available_langs[code]
+            self.language_combo.addItem(display_name, code)
+            if code == current_lang_code:
+                current_idx = i
+        
+        if codes_in_order:
+            self.language_combo.setCurrentIndex(current_idx)
+        self.language_combo.blockSignals(False)
+
+    def _on_language_changed(self, index: int):
+        """Handles language selection change."""
+        new_lang_code = self.language_combo.itemData(index)
+        if new_lang_code and new_lang_code != get_current_language():
+            self.language_changed_signal.emit(new_lang_code)
 
     # --- Command Polling ---
 
@@ -888,21 +946,13 @@ class MainWindow(QMainWindow):
                     if on_bottom: return True, 15
 
                     # Title bar for dragging
-                    if self.title_bar and self.title_bar.geometry().contains(local_pos):
-                         # Let the title bar handle its own controls, but we handle the drag
+                    if local_pos.y() < title_bar_height:
+                        child_widget = self.childAt(local_pos)
+                        if child_widget in [self.minimize_button, self.maximize_button, self.close_button, self.language_combo]:
+                            return super().nativeEvent(event_type, message)
                         return True, 2 # HTCAPTION
 
             return super().nativeEvent(event_type, message)
-
-    def _handle_title_bar_press(self, global_pos: QPoint):
-        """Handles the mouse press event on the title bar to move the window."""
-        if sys.platform == 'win32':
-            # This is a bit of a workaround to integrate with nativeEvent handling
-            # We can effectively "re-post" a message that makes Windows think
-            # the user clicked on the caption of a standard window.
-            ctypes.windll.user32.ReleaseCapture()
-            # WM_NCLBUTTONDOWN = 0x00A1, HTCAPTION = 2
-            ctypes.windll.user32.SendMessageW(int(self.winId()), 0x00A1, 2, 0)
 
     @Slot(QSystemTrayIcon.ActivationReason)
     def on_tray_icon_activated(self, reason: QSystemTrayIcon.ActivationReason):

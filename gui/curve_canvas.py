@@ -620,10 +620,27 @@ class CurveCanvas(FigureCanvas):
         speeds = [p[1] for p in data]
         points_obj.set_data(temps, speeds)
 
-        # --- PERFORMANCE OPTIMIZATION ---
-        # During drag, only draw a simple line connecting the points for performance.
-        # The full smooth curve will be calculated on release.
-        line_obj.set_data(temps, speeds)
+        # Update smooth line based on potentially non-monotonic *during drag* data
+        # (Final monotonicity is enforced on release)
+        temps_smooth, speeds_smooth = [], []
+        spline_points = self._get_setting("SPLINE_POINTS")
+        if len(data) >= MIN_POINTS_FOR_INTERPOLATION:
+            try:
+                # Use current (potentially non-monotonic) data for visual feedback
+                unique_temps_map = {}
+                for t, s in zip(temps, speeds):
+                     if t not in unique_temps_map or s > unique_temps_map[t]: unique_temps_map[t] = s
+                unique_temps = np.array(sorted(unique_temps_map.keys()))
+                unique_speeds = np.array([unique_temps_map[t] for t in unique_temps])
+
+                if len(unique_temps) >= MIN_POINTS_FOR_INTERPOLATION:
+                    interpolator = PchipInterpolator(unique_temps, unique_speeds)
+                    temps_smooth = np.linspace(unique_temps.min(), unique_temps.max(), spline_points)
+                    speeds_smooth = np.clip(interpolator(temps_smooth), MIN_FAN_PERCENT, MAX_FAN_PERCENT)
+                else: temps_smooth, speeds_smooth = temps, speeds
+            except Exception: temps_smooth, speeds_smooth = temps, speeds
+        else: temps_smooth, speeds_smooth = temps, speeds
+        line_obj.set_data(temps_smooth, speeds_smooth)
 
         # Emit signal for potential live feedback (e.g., status bar)
         self.point_dragged.emit(curve_type, idx, new_temp, new_speed)
