@@ -6,13 +6,17 @@ Main application window (QMainWindow) for the Fan & Battery Control GUI.
 """
 
 import sys
+if sys.platform == 'win32':
+    import ctypes
+    from ctypes.wintypes import MSG
 import os
 from typing import List, Optional, NamedTuple
 
 from .qt import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFrame, QMessageBox,
     QSystemTrayIcon, QMenu, QStyle, Qt, QTimer, Signal, QLocale, QEvent,
-    Slot, QByteArray, QIcon, QAction, QCloseEvent, QShowEvent, QHideEvent
+    Slot, QByteArray, QIcon, QAction, QCloseEvent, QShowEvent, QHideEvent,
+    QLabel, QPushButton, QComboBox, QSize, QPoint, QMouseEvent
 )
 
 from .curve_canvas import CurveCanvas
@@ -22,6 +26,7 @@ from .CurveControlPanel import CurveControlPanel
 from .FanControlPanel import FanControlPanel
 from .BatteryControlPanel import BatteryControlPanel
 from .SettingsPanel import SettingsPanel
+from .custom_title_bar import CustomTitleBar
 # --- END MODIFICATION ---
 
 # --- ViewModel Imports ---
@@ -31,7 +36,7 @@ from viewmodels.curve_control_viewmodel import CurveControlViewModel
 # --- END ViewModel Imports ---
 
 from tools.config_manager import ConfigManager, ProfileSettings
-from tools.localization import tr, get_available_languages, set_language, get_current_language # get_available_languages, get_current_language might be removed if SettingsPanel handles all
+from tools.localization import tr, get_available_languages, set_language, get_current_language
 from tools.task_scheduler import create_startup_task, delete_startup_task, is_startup_task_registered
 from config.settings import (
     APP_NAME, APP_ICON_NAME, DEFAULT_PROFILE_SETTINGS
@@ -116,6 +121,7 @@ class MainWindow(QMainWindow):
         # as they are now encapsulated within their respective panel components.
 
         # --- NEW: Declare panel members ---
+        self.title_bar: Optional[CustomTitleBar] = None
         self.status_info_panel: Optional[StatusInfoPanel] = None
         self.curve_control_panel: Optional[CurveControlPanel] = None
         self.fan_control_panel: Optional[FanControlPanel] = None
@@ -168,81 +174,75 @@ class MainWindow(QMainWindow):
     def init_ui(self):
         """Creates and lays out all UI widgets."""
         self.setWindowTitle(tr("window_title"))
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        main_layout = QVBoxLayout(central_widget)
-        main_layout.setContentsMargins(15, 15, 15, 15)
-        main_layout.setSpacing(15)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+
+        # Main container widget
+        main_container = QWidget()
+        main_container.setObjectName("mainContainer")
+        self.setCentralWidget(main_container)
+        
+        # Overall layout
+        overall_layout = QVBoxLayout(main_container)
+        overall_layout.setContentsMargins(0, 0, 0, 0)
+        overall_layout.setSpacing(0)
+
+        # --- Custom Title Bar ---
+        self.title_bar = CustomTitleBar(self)
+        overall_layout.addWidget(self.title_bar)
+        # --- End Custom Title Bar ---
+
+        # Content widget
+        content_widget = QWidget()
+        content_widget.setObjectName("contentWidget")
+        self.main_layout = QVBoxLayout(content_widget)
+        self.main_layout.setContentsMargins(15, 15, 15, 15)
+        self.main_layout.setSpacing(15)
+        overall_layout.addWidget(content_widget)
 
         # --- Status Info Panel ---
         self.status_info_panel = StatusInfoPanel(self)
-        main_layout.addWidget(self.status_info_panel)
-        # self.status_label is now part of self.status_info_panel
+        self.main_layout.addWidget(self.status_info_panel)
 
         # --- Curve Graph Area ---
-        curve_area_layout = QVBoxLayout() # This layout will hold CurveControlPanel and CurveCanvas
-        curve_area_layout.setSpacing(5)
+        curve_area_frame = QFrame()
+        curve_area_frame.setObjectName("curveFrame")
+        curve_area_frame.setFrameShape(QFrame.Shape.StyledPanel)
+        self.curve_area_layout = QVBoxLayout(curve_area_frame)
+        self.curve_area_layout.setContentsMargins(15, 15, 15, 15)
+        self.curve_area_layout.setSpacing(5)
 
-        # Instantiate CurveControlPanel
-        # It needs profile names, active profile name, and startup task status
-        # profile_names = self.config_manager.get_profile_names() # ViewModel will get this from AppRunner/ConfigManager
-        # active_profile_name = self.config_manager.get_active_profile_name() # ViewModel will get this
-        # is_startup_reg = is_startup_task_registered() # ViewModel will get this
         self.curve_control_panel = CurveControlPanel(self.curve_control_vm, self)
-        curve_area_layout.addWidget(self.curve_control_panel)
+        self.curve_area_layout.addWidget(self.curve_control_panel)
 
-        # Curve Canvas (remains a direct member of MainWindow, placed under its controls)
         self.curve_canvas = CurveCanvas(self, width=7, height=4, dpi=100)
-        curve_area_layout.addWidget(self.curve_canvas)
+        self.curve_area_layout.addWidget(self.curve_canvas)
         
-        main_layout.addLayout(curve_area_layout)
-        main_layout.setStretchFactor(curve_area_layout, 1) # Allow canvas area to expand vertically
+        self.main_layout.addWidget(curve_area_frame)
+        self.main_layout.setStretchFactor(curve_area_frame, 1)
 
-        # --- Control Panels (Fan, Battery, Settings) ---
-        # Use a QFrame to group these, similar to the old 'controlFrame'
+        # --- Control Panels (Fan, Battery) ---
         bottom_controls_frame = QFrame()
-        bottom_controls_frame.setObjectName("controlFrame") # Keep old name for styling if needed
+        bottom_controls_frame.setObjectName("controlFrame")
         bottom_controls_frame.setFrameShape(QFrame.Shape.StyledPanel)
         bottom_controls_layout = QHBoxLayout(bottom_controls_frame)
         bottom_controls_layout.setContentsMargins(10, 10, 10, 10)
         bottom_controls_layout.setSpacing(20)
 
-        # Left side for Fan and Battery controls
-        left_fan_battery_layout = QVBoxLayout()
-        left_fan_battery_layout.setSpacing(10)
+        fan_battery_layout = QVBoxLayout()
+        fan_battery_layout.setSpacing(10)
 
-        # Instantiate FanControlPanel - now takes ViewModel
-        # initial_fan_mode = self.config_manager.get_active_profile_setting("fan_mode", DEFAULT_PROFILE_SETTINGS["fan_mode"]) # ViewModel handles initial state
-        # initial_fixed_speed = self.config_manager.get_active_profile_setting("fixed_fan_speed", DEFAULT_PROFILE_SETTINGS["fixed_fan_speed"]) # ViewModel handles initial state
         self.fan_control_panel = FanControlPanel(self.fan_control_vm, self)
-        left_fan_battery_layout.addWidget(self.fan_control_panel)
+        fan_battery_layout.addWidget(self.fan_control_panel)
 
-        # Instantiate BatteryControlPanel - now takes ViewModel
-        # initial_charge_policy = self.config_manager.get_active_profile_setting("charge_policy", DEFAULT_PROFILE_SETTINGS["charge_policy"]) # ViewModel handles initial state
-        # initial_charge_threshold = self.config_manager.get_active_profile_setting("charge_threshold", DEFAULT_PROFILE_SETTINGS["charge_threshold"]) # ViewModel handles initial state
         self.battery_control_panel = BatteryControlPanel(self.battery_control_vm, self)
-        left_fan_battery_layout.addWidget(self.battery_control_panel)
+        fan_battery_layout.addWidget(self.battery_control_panel)
         
-        bottom_controls_layout.addLayout(left_fan_battery_layout, 1) # Left side takes expanding space
+        bottom_controls_layout.addLayout(fan_battery_layout, 1)
 
-        # Right side for Settings Panel (e.g., Language)
-        self.settings_panel = SettingsPanel(self)
-        # Wrap settings_panel in a QVBoxLayout to control its vertical alignment if needed, or add directly
-        right_settings_wrapper_layout = QVBoxLayout()
-        right_settings_wrapper_layout.addWidget(self.settings_panel)
-        right_settings_wrapper_layout.addStretch(1) # Push settings panel to the top of its allocated space
-        bottom_controls_layout.addLayout(right_settings_wrapper_layout)
+        self.main_layout.addWidget(bottom_controls_frame)
 
-
-        main_layout.addWidget(bottom_controls_frame)
-
-        # Connect signals AFTER all widgets are created (will be refactored in next step)
         self.connect_signals()
-
-        # Apply initial state from config (will be refined by first status update)
-        # This will now involve calling methods on the new panels
         self.apply_profile_to_ui(self.config_manager.get_active_profile())
-        # self.update_control_enable_states() # This will also be refactored to use panels
 
     # def _populate_language_combo(self): # Moved to SettingsPanel
     #     """Populates the language selection QComboBox."""
@@ -272,28 +272,27 @@ class MainWindow(QMainWindow):
         external_icon_path = os.path.join(self.config_manager.base_dir, APP_ICON_NAME)
         external_icon = QIcon(external_icon_path)
 
+        final_icon = None
         if not external_icon.isNull():
-            # External icon loaded successfully, apply it everywhere.
             print(f"Successfully loaded external icon from: {external_icon_path}")
-            self.setWindowIcon(external_icon)
-            self.tray_icon.setIcon(external_icon)
+            final_icon = external_icon
         else:
-            # --- Step 2: Fallback to the window's default icon (provided by OS from .exe) ---
-            # If the external icon fails, we don't try to load anything else.
-            # We assume the OS has already set the window's icon from the embedded resource.
-            # We just grab that icon and apply it to the tray.
             print("External icon not found or invalid. Falling back to window's default icon (from .exe).")
-            window_icon = self.windowIcon() # Get the icon set by the OS
+            window_icon = self.windowIcon()
             if not window_icon.isNull():
-                self.tray_icon.setIcon(window_icon)
+                final_icon = window_icon
             else:
-                # --- Step 3: Ultimate fallback to a generic system icon ---
-                # This happens if the .exe has no embedded icon AND external icon is missing.
                 print("Warning: No valid embedded or external icon found. Using generic system icon.")
-                self._use_default_icon()
+                default_icon = self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
+                final_icon = default_icon
 
-        self.tray_icon.setToolTip(APP_NAME)
-
+        self.setWindowIcon(final_icon)
+        self.tray_icon.setIcon(final_icon)
+        if self.title_bar:
+            self.title_bar.set_window_icon(final_icon)
+ 
+        self.tray_icon.setToolTip(tr("window_title"))
+ 
         # Create tray menu
         tray_menu = QMenu(self)
         show_hide_action = QAction(tr("tray_menu_show_hide"), self)
@@ -318,9 +317,19 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(default_icon)
         if self.tray_icon:
             self.tray_icon.setIcon(default_icon)
+        if self.title_bar:
+            self.title_bar.set_window_icon(default_icon)
 
     def connect_signals(self):
         """Connects signals from UI components to MainWindow's handlers or re-emits them."""
+        # Connect signals from the custom title bar
+        if self.title_bar:
+            self.title_bar.minimize_requested.connect(self.showMinimized)
+            self.title_bar.maximize_requested.connect(self._toggle_maximize)
+            self.title_bar.close_requested.connect(self.close)
+            self.title_bar.language_changed.connect(self.language_changed_signal)
+            self.title_bar.mouse_pressed.connect(self._handle_title_bar_press)
+
         # Signals from FanControlPanel and BatteryControlPanel are now handled by their ViewModels
         # which call AppRunner directly. Transient status signals can remain if panels define them.
         if self.fan_control_panel and hasattr(self.fan_control_panel, 'transient_status_signal'):
@@ -347,11 +356,7 @@ class MainWindow(QMainWindow):
                 self.curve_control_panel.transient_status_signal.connect(self._set_transient_status)
 
 
-        # Signals from SettingsPanel
-        if self.settings_panel:
-            self.settings_panel.language_changed_signal.connect(self.language_changed_signal) # Re-emit to AppRunner
-            if hasattr(self.settings_panel, 'transient_status_signal'):
-                 self.settings_panel.transient_status_signal.connect(self._set_transient_status)
+        # Language change signal is now connected directly in init_ui
 
         # Signals from CurveCanvas (still directly managed by MainWindow for data changes)
         if self.curve_canvas:
@@ -363,10 +368,22 @@ class MainWindow(QMainWindow):
         # Stylesheet (same as original, slightly formatted)
         dark_stylesheet = """
             QMainWindow { background-color: #2E3135; }
+            QWidget#mainContainer { border: 1px solid #45494D; }
+            QWidget#contentWidget { background-color: #2E3135; }
             QWidget { color: #E0E0E0; font-family: 'Segoe UI', Arial, sans-serif; font-size: 10pt; }
-            QFrame#infoFrame, QFrame#controlFrame {
+            QFrame#infoFrame, QFrame#controlFrame, QFrame#curveFrame {
                 background-color: #33373B; border-radius: 5px; border: 1px solid #45494D;
             }
+            QWidget#customTitleBar { background-color: #33373B; }
+            QLabel#titleBarLabel { font-weight: bold; padding-left: 5px; }
+            QLabel#statusLabel { color: #FFA500; font-style: italic; }
+            QPushButton#windowControlButton, QPushButton#windowControlButton_close {
+                background-color: transparent; border: none; font-size: 14pt;
+            }
+            QPushButton#windowControlButton:hover { background-color: #5A6065; }
+            QPushButton#windowControlButton:pressed { background-color: #3A4045; }
+            QPushButton#windowControlButton_close:hover { background-color: #C42B1C; }
+            QPushButton#windowControlButton_close:pressed { background-color: #A32517; }
             QLabel { color: #C0C0C0; padding-top: 2px; }
             QLabel#cpu_temp_value, QLabel#gpu_temp_value, QLabel#fan1_rpm_value,
             QLabel#fan2_rpm_value, QLabel#applied_target_value, QLabel#battery_info_value,
@@ -500,12 +517,15 @@ class MainWindow(QMainWindow):
             self.curve_canvas.update_temp_indicators(status.cpu_temp, status.gpu_temp)
 
         # Update main status label (only if not showing a transient message)
-        # This logic might move to StatusInfoPanel or be controlled by a ViewModel
         is_dragging = self.curve_canvas and self.curve_canvas._dragging_point_index is not None
-        if not is_dragging and not self._is_showing_transient_status and self.status_info_panel:
-             # Assuming StatusInfoPanel has a way to show the main controller_status_message
-             # For now, this part of status_info_panel.update_status handles it.
-             pass
+        if not is_dragging and not self._is_showing_transient_status:
+            status_key = status.controller_status_message
+            # If the key is not an empty string, translate and display it. Otherwise, clear the label.
+            if self.title_bar:
+                if status_key:
+                    self.title_bar.set_status_message(tr(status_key))
+                else:
+                    self.title_bar.set_status_message("")
 
 
     # --- REMOVED DEPRECATED METHODS ---
@@ -519,12 +539,9 @@ class MainWindow(QMainWindow):
         if self._is_quitting: return # Don't show errors during shutdown
         QMessageBox.warning(self, title, message)
         # Optionally update status bar if window is visible and not showing transient message
-        if self._is_window_visible and self.status_info_panel:
-            current_main_status = self.status_info_panel.get_main_status_message()
-            if current_main_status not in [tr("initializing"), tr("shutting_down"), tr("paused"), tr("wmi_error")]: # Avoid re-setting wmi_error if already set
-                # Avoid overwriting specific error messages already set by update_status_display
-                if current_main_status == tr("ready"): # Only set wmi_error if status was 'ready'
-                    self._set_transient_status(tr("wmi_error")) # Generic error indication
+        if self._is_window_visible:
+            # Display the error in the main status label as a transient message
+            self._set_transient_status(title)
 
 
     @Slot(bool)
@@ -543,9 +560,12 @@ class MainWindow(QMainWindow):
         if self.battery_control_panel:
             self.battery_control_panel.set_panel_enabled(enabled) # Assumes BatteryControlPanel has this method
 
-        if self.settings_panel:
-            self.settings_panel.set_panel_enabled(enabled) # Assumes SettingsPanel has this method
-
+        # The title bar elements are standard widgets, no need to disable them globally here.
+        # Individual controls like language_combo can be disabled if needed.
+        if self.title_bar:
+            self.title_bar.setEnabled(enabled)
+        # Keep close button always enabled
+        
         if self.curve_canvas:
             self.curve_canvas.setEnabled(enabled) # Canvas has a direct setEnabled
 
@@ -612,10 +632,10 @@ class MainWindow(QMainWindow):
     # Panels will emit higher-level signals that MainWindow connects to (see connect_signals).
 
     def _set_transient_status(self, message: str):
-        """Sets a transient status message via StatusInfoPanel."""
-        if self._is_window_visible and self.status_info_panel:
-            self.status_info_panel.set_main_status_message(message) # is_transient is handled by usage context
-        self._is_showing_transient_status = True # Still used by update_status_display logic
+        """Sets a transient status message on the title bar."""
+        if self._is_window_visible and self.title_bar:
+            self.title_bar.set_status_message(message)
+        self._is_showing_transient_status = True
 
     @Slot(str) # curve_type from CurveControlPanel's reset_curve_signal
     def on_reset_curve_requested_from_panel(self, active_curve_type: str):
@@ -667,8 +687,7 @@ class MainWindow(QMainWindow):
         """Reads current UI state by querying panels and returns it as a ProfileSettings dictionary."""
         # Start with a copy of the currently active profile's settings from config_manager
         # This ensures non-UI-managed settings (like appearance, update interval) are preserved.
-        current_profile_name = self.config_manager.get_active_profile_name()
-        settings = self.config_manager.get_profile_settings(current_profile_name)
+        settings = self.config_manager.get_active_profile()
 
         if settings is None: # Should ideally not happen if a profile is always active
             settings = DEFAULT_PROFILE_SETTINGS.copy()
@@ -711,21 +730,20 @@ class MainWindow(QMainWindow):
     def retranslate_ui(self):
         """Retranslates all user-visible text in the UI by delegating to panels."""
         self.setWindowTitle(tr("window_title"))
+        if self.title_bar:
+            self.title_bar.retranslate_ui()
 
         if self.status_info_panel:
-            self.status_info_panel.retranslate_ui() # Assumes StatusInfoPanel has retranslate_ui
+            self.status_info_panel.retranslate_ui()
 
         if self.curve_control_panel:
-            self.curve_control_panel.retranslate_ui() # Assumes CurveControlPanel has retranslate_ui
+            self.curve_control_panel.retranslate_ui()
 
         if self.fan_control_panel:
-            self.fan_control_panel.retranslate_ui() # Assumes FanControlPanel has retranslate_ui
+            self.fan_control_panel.retranslate_ui()
 
         if self.battery_control_panel:
-            self.battery_control_panel.retranslate_ui() # Assumes BatteryControlPanel has retranslate_ui
-
-        if self.settings_panel:
-            self.settings_panel.retranslate_ui() # Assumes SettingsPanel has retranslate_ui (handles language combo)
+            self.battery_control_panel.retranslate_ui()
 
         if self.curve_canvas:
             self.curve_canvas.retranslate_ui()
@@ -753,14 +771,18 @@ class MainWindow(QMainWindow):
             # If there's no status yet, panels should show their initial translated placeholder texts.
             # This should be handled by each panel's retranslate_ui or their init.
             # MainWindow might set an initial global status message via StatusInfoPanel.
-            if self.status_info_panel:
-                 self.status_info_panel.set_main_status_message(tr("initializing"), is_transient=True)
-                 self._is_showing_transient_status = True
+            if self.title_bar:
+                self.title_bar.set_status_message(tr("initializing"))
+            self._is_showing_transient_status = True
 
         # Old logic for updating individual value labels (e.g. self.cpu_temp_value.setText)
         # and slider value labels (e.g. self.on_manual_fan_slider_changed(...)) during retranslate
         # is now handled within each panel's retranslate_ui or by the update_status_display call.
 
+    # --- Language Combo Methods (Moved from CustomTitleBar) ---
+    # These methods are now removed from MainWindow as they are handled by CustomTitleBar.
+    # def _populate_language_combo(self): ...
+    # def _on_language_changed(self, index: int): ...
 
     # --- Command Polling ---
 
@@ -815,36 +837,72 @@ class MainWindow(QMainWindow):
         """Called when the window is hidden (e.g., minimized to tray)."""
         if self._is_window_visible:
             self._is_window_visible = False
-            if self.status_info_panel and self.status_info_panel.get_main_status_message() != tr("shutting_down"):
+            if self.status_label.text() != tr("shutting_down"):
                 self._set_transient_status(tr("paused"))
-            # --- NEW: Signal AppRunner we are entering background ---
             self.background_state_changed.emit(True)
-            # --- END NEW ---
         super().hideEvent(event)
 
 
-    def changeEvent(self, event: QEvent):
-        """Handles window state changes (minimize/restore)."""
-        if event.type() == QEvent.Type.WindowStateChange:
-            if self.windowState() & Qt.WindowState.WindowMinimized:
-                # Standard minimize (not hide to tray)
-                if self._is_window_visible:
-                    self._is_window_visible = False
-                    if self.status_info_panel and self.status_info_panel.get_main_status_message() != tr("shutting_down"):
-                        self._set_transient_status(tr("paused"))
-                    # --- NEW: Signal AppRunner we are entering background ---
-                    self.background_state_changed.emit(True)
-                    # --- END NEW ---
-            elif not (self.windowState() & Qt.WindowState.WindowMinimized) and self.isVisible():
-                 # Restored from minimized state
-                 if not self._is_window_visible:
-                    self._is_window_visible = True
-                    if self.last_status: self.update_status_display(self.last_status)
-                    # --- NEW: Signal AppRunner we are entering foreground ---
-                    self.background_state_changed.emit(False)
-                    # --- END NEW ---
-        super().changeEvent(event)
+    def _toggle_maximize(self):
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
 
+    if sys.platform == 'win32':
+        def nativeEvent(self, event_type, message):
+            """ Handles Windows native events to enable resizing and dragging. """
+            if event_type == "windows_generic_MSG":
+                msg = MSG.from_address(message.__int__())
+                
+                # WM_NCHITTEST
+                if msg.message == 0x0084:
+                    if self.isMaximized():
+                        return True, 1 # HTCLIENT
+
+                    # Get cursor coordinates from message
+                    x = msg.lParam & 0xFFFF
+                    y = (msg.lParam >> 16) & 0xFFFF
+                    
+                    # Map to local window coordinates
+                    local_pos = self.mapFromGlobal(QPoint(x, y))
+                    
+                    border_width = 8
+                    title_bar_height = 40
+
+                    on_left = local_pos.x() < border_width
+                    on_right = local_pos.x() > self.width() - border_width
+                    on_top = local_pos.y() < border_width
+                    on_bottom = local_pos.y() > self.height() - border_width
+
+                    # Corners
+                    if on_top and on_left: return True, 13
+                    if on_top and on_right: return True, 14
+                    if on_bottom and on_left: return True, 16
+                    if on_bottom and on_right: return True, 17
+
+                    # Edges
+                    if on_left: return True, 10
+                    if on_right: return True, 11
+                    if on_top: return True, 12
+                    if on_bottom: return True, 15
+
+                    # Title bar for dragging
+                    if self.title_bar and self.title_bar.geometry().contains(local_pos):
+                         # Let the title bar handle its own controls, but we handle the drag
+                        return True, 2 # HTCAPTION
+
+            return super().nativeEvent(event_type, message)
+
+    def _handle_title_bar_press(self, global_pos: QPoint):
+        """Handles the mouse press event on the title bar to move the window."""
+        if sys.platform == 'win32':
+            # This is a bit of a workaround to integrate with nativeEvent handling
+            # We can effectively "re-post" a message that makes Windows think
+            # the user clicked on the caption of a standard window.
+            ctypes.windll.user32.ReleaseCapture()
+            # WM_NCLBUTTONDOWN = 0x00A1, HTCAPTION = 2
+            ctypes.windll.user32.SendMessageW(int(self.winId()), 0x00A1, 2, 0)
 
     @Slot(QSystemTrayIcon.ActivationReason)
     def on_tray_icon_activated(self, reason: QSystemTrayIcon.ActivationReason):

@@ -189,7 +189,7 @@ def main():
     app_instance.aboutToQuit.connect(perform_cleanup)
     # --- END MODIFICATION ---
 
-    # 7. Initialize Configuration Manager
+    # 7. Initialize Config Manager
     config_manager = ConfigManager(base_dir=BASE_DIR)
     config_manager.load_config() # Sets language
 

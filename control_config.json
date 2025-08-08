@@ -3,25 +3,29 @@
     "language": "en",
     "start_on_boot": false,
     "window_geometry": null,
-    "active_profile_name": "Configuration 1",
+    "active_profile_name": "Config 1",
     "profiles": {
-        "Configuration 1": {
+        "Config 1": {
             "cpu_fan_table": [
                 [
                     80,
                     0
                 ],
                 [
-                    83,
-                    12
+                    82,
+                    9
+                ],
+                [
+                    84,
+                    19
                 ],
                 [
                     85,
-                    18
+                    31
                 ],
                 [
                     87,
-                    30
+                    39
                 ],
                 [
                     88,
@@ -95,71 +99,79 @@
             "ALPHA_ACTIVE": 1.0,
             "ALPHA_INACTIVE": 0.4
         },
-        "Configuration 2": {
+        "Config 2": {
             "cpu_fan_table": [
                 [
-                    50,
+                    80,
                     0
                 ],
                 [
-                    60,
-                    15
+                    82,
+                    9
                 ],
                 [
-                    70,
-                    25
-                ],
-                [
-                    80,
-                    40
+                    83,
+                    16
                 ],
                 [
                     85,
-                    60
+                    31
                 ],
                 [
-                    90,
-                    80
+                    87,
+                    39
+                ],
+                [
+                    88,
+                    45
+                ],
+                [
+                    92,
+                    68
                 ],
                 [
                     95,
-                    100
+                    79
+                ],
+                [
+                    100,
+                    90
                 ]
             ],
             "gpu_fan_table": [
                 [
-                    40,
+                    70,
                     0
                 ],
                 [
-                    55,
-                    15
+                    74,
+                    24
                 ],
                 [
-                    65,
-                    25
-                ],
-                [
-                    70,
-                    40
-                ],
-                [
-                    75,
-                    60
+                    77,
+                    39
                 ],
                 [
                     80,
-                    80
+                    53
                 ],
                 [
-                    85,
+                    84,
+                    72
+                ],
+                [
+                    90,
+                    88
+                ],
+                [
+                    99,
                     100
                 ]
             ],
             "fan_mode": "auto",
-            "fixed_fan_speed": 30,
+            "fixed_fan_speed": 40,
             "charge_policy": "custom",
-            "charge_threshold": 80,
+            "charge_threshold": 85,
             "AUTO_MODE_CYCLE_DURATION_S": 3.0,
             "GUI_UPDATE_INTERVAL_MS": 1000,
             "FAN_ADJUSTMENT_INTERVAL_S": 1.5,
@@ -181,71 +193,79 @@
             "ALPHA_ACTIVE": 1.0,
             "ALPHA_INACTIVE": 0.4
         },
-        "Configuration 3": {
+        "Config 3": {
             "cpu_fan_table": [
                 [
-                    50,
+                    80,
                     0
                 ],
                 [
-                    60,
-                    15
+                    82,
+                    9
                 ],
                 [
-                    70,
-                    25
-                ],
-                [
-                    80,
-                    40
+                    83,
+                    16
                 ],
                 [
                     85,
-                    60
+                    31
                 ],
                 [
-                    90,
-                    80
+                    87,
+                    39
+                ],
+                [
+                    88,
+                    45
+                ],
+                [
+                    92,
+                    68
                 ],
                 [
                     95,
-                    100
+                    79
+                ],
+                [
+                    100,
+                    90
                 ]
             ],
             "gpu_fan_table": [
                 [
-                    40,
+                    70,
                     0
                 ],
                 [
-                    55,
-                    15
+                    74,
+                    24
                 ],
                 [
-                    65,
-                    25
-                ],
-                [
-                    70,
-                    40
-                ],
-                [
-                    75,
-                    60
+                    77,
+                    39
                 ],
                 [
                     80,
-                    80
+                    53
                 ],
                 [
-                    85,
+                    84,
+                    72
+                ],
+                [
+                    90,
+                    88
+                ],
+                [
+                    99,
                     100
                 ]
             ],
             "fan_mode": "auto",
-            "fixed_fan_speed": 30,
+            "fixed_fan_speed": 40,
             "charge_policy": "custom",
-            "charge_threshold": 80,
+            "charge_threshold": 85,
             "AUTO_MODE_CYCLE_DURATION_S": 3.0,
             "GUI_UPDATE_INTERVAL_MS": 1000,
             "FAN_ADJUSTMENT_INTERVAL_S": 1.5,
@@ -267,71 +287,79 @@
             "ALPHA_ACTIVE": 1.0,
             "ALPHA_INACTIVE": 0.4
         },
-        "Configuration 4": {
+        "Config 4": {
             "cpu_fan_table": [
                 [
-                    50,
+                    80,
                     0
                 ],
                 [
-                    60,
-                    15
+                    82,
+                    9
                 ],
                 [
-                    70,
-                    25
-                ],
-                [
-                    80,
-                    40
+                    83,
+                    16
                 ],
                 [
                     85,
-                    60
+                    31
                 ],
                 [
-                    90,
-                    80
+                    87,
+                    39
+                ],
+                [
+                    88,
+                    45
+                ],
+                [
+                    92,
+                    68
                 ],
                 [
                     95,
-                    100
+                    79
+                ],
+                [
+                    100,
+                    90
                 ]
             ],
             "gpu_fan_table": [
                 [
-                    40,
+                    70,
                     0
                 ],
                 [
-                    55,
-                    15
+                    74,
+                    24
                 ],
                 [
-                    65,
-                    25
-                ],
-                [
-                    70,
-                    40
-                ],
-                [
-                    75,
-                    60
+                    77,
+                    39
                 ],
                 [
                     80,
-                    80
+                    53
                 ],
                 [
-                    85,
+                    84,
+                    72
+                ],
+                [
+                    90,
+                    88
+                ],
+                [
+                    99,
                     100
                 ]
             ],
             "fan_mode": "auto",
-            "fixed_fan_speed": 30,
+            "fixed_fan_speed": 40,
             "charge_policy": "custom",
-            "charge_threshold": 80,
+            "charge_threshold": 85,
             "AUTO_MODE_CYCLE_DURATION_S": 3.0,
             "GUI_UPDATE_INTERVAL_MS": 1000,
             "FAN_ADJUSTMENT_INTERVAL_S": 1.5,
@@ -353,71 +381,79 @@
             "ALPHA_ACTIVE": 1.0,
             "ALPHA_INACTIVE": 0.4
         },
-        "Configuration 5": {
+        "Config 5": {
             "cpu_fan_table": [
                 [
-                    50,
+                    80,
                     0
                 ],
                 [
-                    60,
-                    15
+                    82,
+                    9
                 ],
                 [
-                    70,
-                    25
-                ],
-                [
-                    80,
-                    40
+                    83,
+                    16
                 ],
                 [
                     85,
-                    60
+                    31
                 ],
                 [
-                    90,
-                    80
+                    87,
+                    39
+                ],
+                [
+                    88,
+                    45
+                ],
+                [
+                    92,
+                    68
                 ],
                 [
                     95,
-                    100
+                    79
+                ],
+                [
+                    100,
+                    90
                 ]
             ],
             "gpu_fan_table": [
                 [
-                    40,
+                    70,
                     0
                 ],
                 [
-                    55,
-                    15
+                    74,
+                    24
                 ],
                 [
-                    65,
-                    25
-                ],
-                [
-                    70,
-                    40
-                ],
-                [
-                    75,
-                    60
+                    77,
+                    39
                 ],
                 [
                     80,
-                    80
+                    53
                 ],
                 [
-                    85,
+                    84,
+                    72
+                ],
+                [
+                    90,
+                    88
+                ],
+                [
+                    99,
                     100
                 ]
             ],
             "fan_mode": "auto",
-            "fixed_fan_speed": 30,
+            "fixed_fan_speed": 40,
             "charge_policy": "custom",
-            "charge_threshold": 80,
+            "charge_threshold": 85,
             "AUTO_MODE_CYCLE_DURATION_S": 3.0,
             "GUI_UPDATE_INTERVAL_MS": 1000,
             "FAN_ADJUSTMENT_INTERVAL_S": 1.5,
@@ -439,71 +475,79 @@
             "ALPHA_ACTIVE": 1.0,
             "ALPHA_INACTIVE": 0.4
         },
-        "Configuration 6": {
+        "Config 6": {
             "cpu_fan_table": [
                 [
-                    50,
+                    80,
                     0
                 ],
                 [
-                    60,
-                    15
+                    82,
+                    9
                 ],
                 [
-                    70,
-                    25
-                ],
-                [
-                    80,
-                    40
+                    83,
+                    16
                 ],
                 [
                     85,
-                    60
+                    31
                 ],
                 [
-                    90,
-                    80
+                    87,
+                    39
+                ],
+                [
+                    88,
+                    45
+                ],
+                [
+                    92,
+                    68
                 ],
                 [
                     95,
-                    100
+                    79
+                ],
+                [
+                    100,
+                    90
                 ]
             ],
             "gpu_fan_table": [
                 [
-                    40,
+                    70,
                     0
                 ],
                 [
-                    55,
-                    15
+                    74,
+                    24
                 ],
                 [
-                    65,
-                    25
-                ],
-                [
-                    70,
-                    40
-                ],
-                [
-                    75,
-                    60
+                    77,
+                    39
                 ],
                 [
                     80,
-                    80
+                    53
                 ],
                 [
-                    85,
+                    84,
+                    72
+                ],
+                [
+                    90,
+                    88
+                ],
+                [
+                    99,
                     100
                 ]
             ],
             "fan_mode": "auto",
-            "fixed_fan_speed": 30,
+            "fixed_fan_speed": 40,
             "charge_policy": "custom",
-            "charge_threshold": 80,
+            "charge_threshold": 85,
             "AUTO_MODE_CYCLE_DURATION_S": 3.0,
             "GUI_UPDATE_INTERVAL_MS": 1000,
             "FAN_ADJUSTMENT_INTERVAL_S": 1.5,

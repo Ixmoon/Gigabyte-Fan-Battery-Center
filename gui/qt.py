@@ -19,14 +19,18 @@ from PySide6.QtCore import (
     QEvent,
     QByteArray,
     Signal,
-    Slot
+    Slot,
+    QSize,
+    QPoint
 )
 from PySide6.QtGui import (
     QIcon,
     QAction,
     QCloseEvent,
     QShowEvent,
-    QHideEvent
+    QHideEvent,
+    QMouseEvent,
+    QResizeEvent
 )
 from PySide6.QtWidgets import (
     QApplication,

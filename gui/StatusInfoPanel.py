@@ -35,19 +35,17 @@ class StatusInfoPanel(QFrame):
         layout.setSpacing(10)
 
         self.cpu_temp_label = QLabel(tr("cpu_temp_label"))
-        self.cpu_temp_value = QLabel(f"--- {tr('celsius_unit')}")
+        self.cpu_temp_value = QLabel(tr("value_not_available"))
         self.gpu_temp_label = QLabel(tr("gpu_temp_label"))
-        self.gpu_temp_value = QLabel(f"--- {tr('celsius_unit')}")
+        self.gpu_temp_value = QLabel(tr("value_not_available"))
         self.fan1_rpm_label = QLabel(tr("fan1_rpm_label"))
-        self.fan1_rpm_value = QLabel(f"--- {tr('rpm_unit')}")
+        self.fan1_rpm_value = QLabel(tr("value_not_available"))
         self.fan2_rpm_label = QLabel(tr("fan2_rpm_label"))
-        self.fan2_rpm_value = QLabel(f"--- {tr('rpm_unit')}")
+        self.fan2_rpm_value = QLabel(tr("value_not_available"))
         self.applied_target_label = QLabel(tr("applied_target_label"))
-        self.applied_target_value = QLabel(f"--- {tr('percent_unit')}")
+        self.applied_target_value = QLabel(tr("value_not_available"))
         self.battery_info_label = QLabel(tr("battery_info_label"))
-        self.battery_info_value = QLabel(f"--- / ---{tr('percent_unit')}")
-        self.status_label_title = QLabel(tr("status_label"))
-        self.status_label = QLabel(tr("initializing")) # Initial status
+        self.battery_info_value = QLabel(tr("value_not_available"))
 
         # Assign object names for styling/testing if needed from MainWindow
         self.cpu_temp_value.setObjectName("cpu_temp_value")
@@ -56,7 +54,6 @@ class StatusInfoPanel(QFrame):
         self.fan2_rpm_value.setObjectName("fan2_rpm_value")
         self.applied_target_value.setObjectName("applied_target_value")
         self.battery_info_value.setObjectName("battery_info_value")
-        self.status_label.setObjectName("status_label")
 
         # Add widgets to grid layout
         layout.addWidget(self.cpu_temp_label, 0, 0)
@@ -71,8 +68,6 @@ class StatusInfoPanel(QFrame):
         layout.addWidget(self.applied_target_value, 2, 1)
         layout.addWidget(self.battery_info_label, 2, 2)
         layout.addWidget(self.battery_info_value, 2, 3)
-        layout.addWidget(self.status_label_title, 3, 0)
-        layout.addWidget(self.status_label, 3, 1, 1, 3) # Span status label
 
         layout.setColumnStretch(1, 1) # Allow values to expand
         layout.setColumnStretch(3, 1)
@@ -106,48 +101,40 @@ class StatusInfoPanel(QFrame):
         self.fan2_rpm_value.setText(rpm2_str)
 
         # Fan Speed / Target Display
-        applied_speed = status_data.get('applied_fan_percentage', -1) # Use -1 or other sentinel
+        applied_speed = status_data.get('applied_fan_percentage', -1)
         target_speed = status_data.get('theoretical_target_percentage', -1)
         fan_mode = status_data.get('current_fan_mode', 'unknown')
-
-        applied_speed_str = f"{applied_speed}{tr('percent_unit')}" if applied_speed != -1 else "---"
-        target_speed_str = f"{target_speed}{tr('percent_unit')}" if target_speed != -1 else "---"
+ 
+        applied_speed_str = f"{applied_speed}{tr('percent_unit')}" if applied_speed != -1 else tr("value_not_available")
+        target_speed_str = f"{target_speed}{tr('percent_unit')}" if target_speed != -1 else tr("value_not_available")
+        
         fan_display_text = applied_speed_str
         if fan_mode == "auto":
-            fan_display_text = f"{applied_speed_str} / {target_speed_str} ({tr('mode_auto')})"
+            fan_display_text = tr("fan_display_auto_format", applied=applied_speed_str, target=target_speed_str, mode=tr('mode_auto'))
         elif fan_mode == "unknown":
-            fan_display_text = f"{tr('wmi_error')} ({tr('unknown_mode')})"
+            fan_display_text = tr("fan_display_error_format", error=tr('wmi_error'), mode=tr('unknown_mode'))
         self.applied_target_value.setText(fan_display_text)
-
+ 
         # Battery Info Display
         charge_policy = status_data.get('current_charge_policy')
         charge_threshold = status_data.get('current_charge_threshold', -1)
-
+ 
         policy_str = tr("policy_error")
         if charge_policy == "standard":
             policy_str = tr("mode_standard")
         elif charge_policy == "custom":
             policy_str = tr("mode_custom")
-        elif charge_policy is None: # Explicit check for None if it represents unknown
-             policy_str = tr("unknown_mode")
-
-
+        elif charge_policy is None:
+            policy_str = tr("unknown_mode")
+ 
         threshold_str = tr("threshold_error")
-        if charge_threshold != -1 : # Assuming -1 is the error/uninit value
+        if charge_threshold != -1:
             threshold_str = f"{charge_threshold}{tr('percent_unit')}"
-        self.battery_info_value.setText(f"{policy_str} / {threshold_str}")
+        
+        self.battery_info_value.setText(tr("battery_display_format", policy=policy_str, limit=threshold_str))
 
-        # Controller Status Message
-        self.status_label.setText(status_data.get('controller_status_message', tr("unknown_state")))
-
-    def set_main_status_message(self, message: str, is_transient: bool = False) -> None:
-        """Sets the main status label text."""
-        # 'is_transient' could be used for different styling or timeout in the future
-        self.status_label.setText(message)
-
-    def get_main_status_message(self) -> str:
-        """Gets the current text of the main status label."""
-        return self.status_label.text()
+        # Controller Status Message is now handled by the title bar
+        pass
 
     def retranslate_ui(self) -> None:
         """Retranslates all user-visible text in the panel."""
@@ -157,23 +144,22 @@ class StatusInfoPanel(QFrame):
         self.fan2_rpm_label.setText(tr("fan2_rpm_label"))
         self.applied_target_label.setText(tr("applied_target_label"))
         self.battery_info_label.setText(tr("battery_info_label"))
-        self.status_label_title.setText(tr("status_label"))
         # The value labels will be updated by update_status with translated units/errors
-        # If there's an initial state that needs re-translation before first update_status:
-        if self.cpu_temp_value.text().startswith("---"):
-             self.cpu_temp_value.setText(f"--- {tr('celsius_unit')}")
-        if self.gpu_temp_value.text().startswith("---"):
-             self.gpu_temp_value.setText(f"--- {tr('celsius_unit')}")
-        if self.fan1_rpm_value.text().startswith("---"):
-             self.fan1_rpm_value.setText(f"--- {tr('rpm_unit')}")
-        if self.fan2_rpm_value.text().startswith("---"):
-             self.fan2_rpm_value.setText(f"--- {tr('rpm_unit')}")
-        if self.applied_target_value.text().startswith("---"):
-            self.applied_target_value.setText(f"--- {tr('percent_unit')}")
-        if self.battery_info_value.text().startswith("---"):
-            self.battery_info_value.setText(f"--- / ---{tr('percent_unit')}")
-        if self.status_label.text() == "Initializing..." or self.status_label.text() == "初始化中...": # Handle initial untranslated
-            self.status_label.setText(tr("initializing"))
+        # If there's an initial state that needs re-translation before first update_status,
+        # check against the translated "not available" value.
+        vna = tr("value_not_available")
+        if self.cpu_temp_value.text() == vna:
+             self.cpu_temp_value.setText(vna) # No unit needed for "---"
+        if self.gpu_temp_value.text() == vna:
+             self.gpu_temp_value.setText(vna)
+        if self.fan1_rpm_value.text() == vna:
+             self.fan1_rpm_value.setText(vna)
+        if self.fan2_rpm_value.text() == vna:
+             self.fan2_rpm_value.setText(vna)
+        if self.applied_target_value.text() == vna:
+            self.applied_target_value.setText(vna)
+        if self.battery_info_value.text() == vna:
+            self.battery_info_value.setText(vna)
 
     def set_panel_enabled(self, enabled: bool) -> None:
         """

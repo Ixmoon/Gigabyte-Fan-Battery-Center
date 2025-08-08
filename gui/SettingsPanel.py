@@ -6,15 +6,15 @@ Settings Panel QWidget for Fan & Battery Control.
 Contains controls for application settings like language.
 """
 from .qt import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QFrame,
+    QWidget, QHBoxLayout, QLabel, QComboBox,
     Signal, Qt, QTimer
 )
 
 from tools.localization import tr, get_available_languages, get_current_language
 
-class SettingsPanel(QFrame):
+class SettingsPanel(QWidget):
     """
-    A QFrame subclass that groups application settings controls.
+    A QWidget subclass that groups application settings controls.
     """
     language_changed_signal = Signal(str) # lang_code
     transient_status_signal = Signal(str) # For MainWindow to show temporary status
@@ -28,7 +28,6 @@ class SettingsPanel(QFrame):
         """
         super().__init__(parent)
         self.setObjectName("settingsFrame") # Optional for styling
-        # self.setFrameShape(QFrame.Shape.StyledPanel)
 
         self._init_ui()
 
@@ -36,30 +35,17 @@ class SettingsPanel(QFrame):
         """
         Initializes the UI elements for the settings panel.
         """
-        # Main layout for this panel can be QVBoxLayout if settings are stacked vertically
-        # or QHBoxLayout if they are primarily horizontal.
-        # For just language, QHBoxLayout within a QVBoxLayout for the frame is fine.
-        outer_layout = QVBoxLayout(self)
-        outer_layout.setContentsMargins(5,5,5,5)
-        outer_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-
-
-        controls_layout = QHBoxLayout()
-        controls_layout.setContentsMargins(0,0,0,0) # No inner margins if outer has them
-        controls_layout.setSpacing(10)
-
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
 
         self.language_label = QLabel(tr("language_label"))
         self.language_combo = QComboBox()
         self._populate_language_combo()
         self.language_combo.currentIndexChanged.connect(self._on_language_changed)
 
-        controls_layout.addWidget(self.language_label)
-        controls_layout.addWidget(self.language_combo)
-        controls_layout.addStretch(1) # Push to left if more items are added later in this row
-
-        outer_layout.addLayout(controls_layout)
-        outer_layout.addStretch(1) # Pushes the QHBoxLayout to the top
+        layout.addWidget(self.language_label)
+        layout.addWidget(self.language_combo)
 
 
     def _populate_language_combo(self) -> None:

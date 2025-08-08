@@ -71,8 +71,8 @@ class FanControlPanel(QFrame):
         )
         # Consider also valueChanged if direct keyboard input should immediately trigger VM update
         # self.manual_fan_speed_slider.valueChanged.connect(self.view_model.set_fixed_speed) # More responsive
-
-        self.manual_fan_speed_value_label = QLabel(f"---{tr('percent_unit')}")
+ 
+        self.manual_fan_speed_value_label = QLabel(tr("value_not_available"))
         self.manual_fan_speed_value_label.setMinimumWidth(45)
         self.manual_fan_speed_value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.manual_fan_speed_value_label.setObjectName("manual_speed_value_label")

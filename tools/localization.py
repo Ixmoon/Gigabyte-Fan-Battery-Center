@@ -57,19 +57,25 @@ DEFAULT_ENGLISH_TRANSLATIONS: Dict[str, str] = {
 
     # Status Messages
     "initializing": "Initializing...",
-    "ready": "Ready",
     "paused": "Paused (Hidden)",
-    "saving_config": "Configuration saved.",
+    "saving_config": "Config saved.",
     "applying_settings": "Applying settings...",
     "shutting_down": "Shutting down...",
     "profile_activated": "Profile '{name}' activated.",
     "profile_saved": "Current settings saved to profile '{name}'.",
     "profile_renamed": "Profile renamed to '{new_name}'.",
-
+    "profile_load_error_title": "Profile Error",
+    "profile_load_error_msg": "Could not load profile '{name}'.",
+    "profile_rename_error_msg": "Failed to rename profile '{old_name}'.",
+    "value_not_available": "---",
+    "fan_display_auto_format": "{applied} / {target} ({mode})",
+    "fan_display_error_format": "{error} ({mode})",
+    "battery_display_format": "{policy} / {limit}",
+ 
     # Error Messages & Titles
-    "config_load_error_title": "Configuration Error",
+    "config_load_error_title": "Config Error",
     "config_load_error_msg": "Could not load or parse '{filename}'.\nUsing default settings.\n\nError: {error}",
-    "config_save_error_title": "Configuration Save Error",
+    "config_save_error_title": "Config Save Error",
     "config_save_error_msg": "Could not save configuration to '{filename}'.\n\nError: {error}",
     "wmi_init_error_title": "WMI Initialization Error",
     "wmi_init_error_msg": "Failed to initialize WMI communication.\nEnsure Gigabyte software/drivers are installed and running.\nThe application may not function correctly.\n\nError: {error}",
@@ -121,7 +127,7 @@ DEFAULT_ENGLISH_TRANSLATIONS: Dict[str, str] = {
     "gpu_curve_legend_label": "GPU Curve",
 
     # Profile Names
-    "default_profile_name": "Configuration {num}", # Used by ConfigManager
+    "default_profile_name": "Config {num}", # Used by ConfigManager
 
     # Confirmation Dialogs
     "reset_curve_confirm_title": "Confirm Reset",

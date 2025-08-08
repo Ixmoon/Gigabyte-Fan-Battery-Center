@@ -145,11 +145,26 @@ class CurveControlPanel(QFrame):
             button.deleteLater()
         self.profile_buttons.clear()
 
-        # Determine insert index: after CPU/GPU buttons and their spacer
-        # CPU button, GPU button, Spacer = 3 items. Insert at index 3.
-        insert_idx = 3
-        if controls_layout.count() < insert_idx: # Safety if layout is unexpectedly sparse
-            insert_idx = controls_layout.count()
+        # Determine insert index: dynamically find the stretch item
+        insert_idx = -1
+        for i in range(controls_layout.count()):
+            item = controls_layout.itemAt(i)
+            if isinstance(item, QSpacerItem) and item.spacerItem().expandingDirections() == Qt.Orientation.Horizontal:
+                insert_idx = i
+                break
+        
+        # If no stretch item is found, append to the end before other controls might be added.
+        # This is a fallback, the stretch item should exist from _init_ui.
+        if insert_idx == -1:
+            # Fallback: count items before the known non-profile widgets
+            # This is less robust but better than a fixed index.
+            # Let's count everything that is not a profile button.
+            non_profile_items = 0
+            for i in range(controls_layout.count()):
+                widget = controls_layout.itemAt(i).widget()
+                if widget and not isinstance(widget, QPushButton) or (isinstance(widget, QPushButton) and not widget.property("profile_name")):
+                     non_profile_items += 1
+            insert_idx = non_profile_items
 
 
         for i, profile_name in enumerate(profile_names):
@@ -162,8 +177,7 @@ class CurveControlPanel(QFrame):
 
             self.profile_buttons.append(button)
             self.profile_button_group.addButton(button)
-            # controls_layout.addWidget(button) # Add directly to controls_layout (before stretch)
-            controls_layout.insertWidget(insert_idx + i, button) # Insert at calculated position
+            controls_layout.insertWidget(insert_idx + i, button)
 
             if profile_name == active_profile_name:
                 button.setChecked(True)

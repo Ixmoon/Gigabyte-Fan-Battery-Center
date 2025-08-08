@@ -198,7 +198,7 @@ class ConfigManager:
                 loaded_config = json.load(f)
 
             if not isinstance(loaded_config, dict):
-                raise ValueError("Configuration file is not a valid JSON object.")
+                raise ValueError("Config file is not a valid JSON object.")
 
             # Start validation with a fresh default structure
             validated_config = self._get_default_config()

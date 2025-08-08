@@ -14,8 +14,9 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import matplotlib.lines as lines
 from matplotlib.backend_bases import MouseButton
+from matplotlib.ticker import FuncFormatter, MultipleLocator
 
-from .qt import QSizePolicy, QMessageBox, Signal
+from .qt import QSizePolicy, QMessageBox, Signal, QResizeEvent
 
 # Import settings for defaults and limits
 from config.settings import (
@@ -72,7 +73,32 @@ class CurveCanvas(FigureCanvas):
         self._setup_plot_style()
         self.connect_events()
         self.setToolTip(f"{tr('add_point_info')}\n{tr('delete_point_info')}")
-        self.fig.tight_layout(pad=2.0) # Add some padding
+
+    def resizeEvent(self, event: QResizeEvent):
+        """
+        Overrides resizeEvent to dynamically adjust plot margins to be fixed in pixels.
+        """
+        super().resizeEvent(event)
+
+        # Define fixed margins in pixels
+        left_margin_px = 55
+        right_margin_px = 20
+        top_margin_px = 20
+        bottom_margin_px = 35
+
+        fig_width_px, fig_height_px = self.get_width_height()
+
+        if fig_width_px > 0 and fig_height_px > 0:
+            left = left_margin_px / fig_width_px
+            right = 1 - (right_margin_px / fig_width_px)
+            top = 1 - (top_margin_px / fig_height_px)
+            bottom = bottom_margin_px / fig_height_px
+
+            try:
+                # This ensures the plot area is redrawn with the new margins
+                self.fig.subplots_adjust(left=left, right=right, top=top, bottom=bottom)
+            except (ValueError, TypeError):
+                pass # Avoid errors during rapid resize
 
     # --- Added Method ---
     def _validate_and_sort(self, table: FanTable) -> FanTable:
@@ -100,8 +126,12 @@ class CurveCanvas(FigureCanvas):
         self.fig.patch.set_facecolor(bg_color)
         self.axes.set_facecolor(axes_color)
 
-        self.axes.set_xlabel(tr("temp_axis_label"), color=label_color)
-        self.axes.set_ylabel(tr("speed_axis_label"), color=label_color)
+        self.axes.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f'{int(x)}{tr("celsius_unit")}'))
+        self.axes.yaxis.set_major_formatter(FuncFormatter(lambda x, pos: f'{int(x)}{tr("percent_unit")}'))
+
+        # Set tick intervals
+        self.axes.xaxis.set_major_locator(MultipleLocator(10))
+        self.axes.yaxis.set_major_locator(MultipleLocator(10))
 
         self.axes.tick_params(axis='x', colors=tick_color)
         self.axes.tick_params(axis='y', colors=tick_color)
@@ -113,8 +143,8 @@ class CurveCanvas(FigureCanvas):
         self.axes.grid(True, linestyle='--', color=grid_color, alpha=0.6)
 
         # Set plot limits
-        self.axes.set_xlim(MIN_TEMP_C - 5, MAX_TEMP_C + 5)
-        self.axes.set_ylim(MIN_FAN_PERCENT - 5, MAX_FAN_PERCENT + 5)
+        self.axes.set_xlim(40, MAX_TEMP_C)
+        self.axes.set_ylim(MIN_FAN_PERCENT, MAX_FAN_PERCENT)
 
 
     def apply_appearance_settings(self, settings: Dict[str, Any]):
@@ -281,14 +311,11 @@ class CurveCanvas(FigureCanvas):
         self._plot_single_curve(self.cpu_curve_data, 'cpu')
         self._plot_single_curve(self.gpu_curve_data, 'gpu')
 
-        # Ensure axes limits and labels are correct
-        self.axes.set_xlim(MIN_TEMP_C - 5, MAX_TEMP_C + 5)
-        self.axes.set_ylim(MIN_FAN_PERCENT - 5, MAX_FAN_PERCENT + 5)
-        self.axes.set_xlabel(tr("temp_axis_label"))
-        self.axes.set_ylabel(tr("speed_axis_label"))
+        # Ensure axes limits are correct
+        self.axes.set_xlim(40, MAX_TEMP_C)
+        self.axes.set_ylim(MIN_FAN_PERCENT, MAX_FAN_PERCENT)
 
         self._update_legend()
-        self.fig.tight_layout(pad=2.0)
         self.draw_idle() # Request redraw
 
     def update_temp_indicators(self, cpu_temp: float, gpu_temp: float):
@@ -593,27 +620,10 @@ class CurveCanvas(FigureCanvas):
         speeds = [p[1] for p in data]
         points_obj.set_data(temps, speeds)
 
-        # Update smooth line based on potentially non-monotonic *during drag* data
-        # (Final monotonicity is enforced on release)
-        temps_smooth, speeds_smooth = [], []
-        spline_points = self._get_setting("SPLINE_POINTS")
-        if len(data) >= MIN_POINTS_FOR_INTERPOLATION:
-            try:
-                # Use current (potentially non-monotonic) data for visual feedback
-                unique_temps_map = {}
-                for t, s in zip(temps, speeds):
-                     if t not in unique_temps_map or s > unique_temps_map[t]: unique_temps_map[t] = s
-                unique_temps = np.array(sorted(unique_temps_map.keys()))
-                unique_speeds = np.array([unique_temps_map[t] for t in unique_temps])
-
-                if len(unique_temps) >= MIN_POINTS_FOR_INTERPOLATION:
-                    interpolator = PchipInterpolator(unique_temps, unique_speeds)
-                    temps_smooth = np.linspace(unique_temps.min(), unique_temps.max(), spline_points)
-                    speeds_smooth = np.clip(interpolator(temps_smooth), MIN_FAN_PERCENT, MAX_FAN_PERCENT)
-                else: temps_smooth, speeds_smooth = temps, speeds
-            except Exception: temps_smooth, speeds_smooth = temps, speeds
-        else: temps_smooth, speeds_smooth = temps, speeds
-        line_obj.set_data(temps_smooth, speeds_smooth)
+        # --- PERFORMANCE OPTIMIZATION ---
+        # During drag, only draw a simple line connecting the points for performance.
+        # The full smooth curve will be calculated on release.
+        line_obj.set_data(temps, speeds)
 
         # Emit signal for potential live feedback (e.g., status bar)
         self.point_dragged.emit(curve_type, idx, new_temp, new_speed)
@@ -655,8 +665,9 @@ class CurveCanvas(FigureCanvas):
     def retranslate_ui(self):
         """Retranslates text elements on the plot."""
         
-        self.axes.set_xlabel(tr("temp_axis_label"))
-        self.axes.set_ylabel(tr("speed_axis_label"))
+        self.axes.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f'{int(x)}{tr("celsius_unit")}'))
+        self.axes.yaxis.set_major_formatter(FuncFormatter(lambda x, pos: f'{int(x)}{tr("percent_unit")}'))
+
         self.setToolTip(f"{tr('add_point_info')}\n{tr('delete_point_info')}")
         self._update_legend()
         self.draw_idle()

@@ -121,7 +121,7 @@ class AppRunner(QObject):
             self.curve_control_vm.set_panel_enabled(False)
             self._emit_status_update() # Update StatusInfoPanel
         else:
-            self._controller_status_message = tr("ready")
+            self._controller_status_message = "" # Empty string for "Ready" state
             self.main_window.set_controls_enabled_state(True)
             self.fan_control_vm.set_panel_enabled(True)
             self.battery_control_vm.set_panel_enabled(True)
@@ -180,8 +180,8 @@ class AppRunner(QObject):
         theoretical_target = self.auto_temp_controller.get_last_theoretical_target()
 
         if not self.main_window._is_showing_transient_status: # MainWindow still manages its own transient status for now
-            self._controller_status_message = tr("wmi_error") if not self.wmi_interface._is_running else tr("ready")
-
+            self._controller_status_message = "wmi_error" if not self.wmi_interface._is_running else ""
+ 
         # Update ViewModels
         self.fan_control_vm.update_fan_mode_from_status(self.fan_controller.current_mode)
         self.fan_control_vm.update_applied_fixed_speed_from_status(self.fan_controller.applied_percentage)
@@ -327,10 +327,10 @@ class AppRunner(QObject):
         profile_settings = self.config_manager.get_profile(profile_name)
         if not profile_settings:
             if not self._is_in_background:
-                self.main_window.show_error_message("Profile Error", f"Could not load profile '{profile_name}'.")
+                self.main_window.show_error_message(tr("profile_load_error_title"), tr("profile_load_error_msg", name=profile_name))
             self._reset_status_message()
             return
-
+ 
         self._current_profile = profile_settings.copy()
         self.config_manager.set_active_profile_name(profile_name)
         
@@ -374,8 +374,8 @@ class AppRunner(QObject):
                 self.main_window._set_transient_status(tr("profile_activated", name=profile_name))
                 QTimer.singleShot(2000, self._reset_status_message)
         else: # Initial load message
-            if self.wmi_interface._is_running : self._controller_status_message = tr("ready")
-            else: self._controller_status_message = tr("wmi_error")
+            if self.wmi_interface._is_running : self._controller_status_message = ""
+            else: self._controller_status_message = "wmi_error"
 
 
     @Slot(str) # Changed signature to match CurveControlViewModel.profile_to_save_signal
@@ -433,7 +433,7 @@ class AppRunner(QObject):
                 QTimer.singleShot(2000, self._reset_status_message)
         else:
              if not self._is_in_background:
-                 self.main_window.show_error_message(tr("rename_profile_error_title"), f"Failed to rename profile '{old_name}'.")
+                 self.main_window.show_error_message(tr("rename_profile_error_title"), tr("profile_rename_error_msg", old_name=old_name))
                  self._reset_status_message()
 
 
@@ -560,7 +560,7 @@ class AppRunner(QObject):
         if self.main_window:
             self.main_window._is_showing_transient_status = False # Let MainWindow manage this flag
         
-        current_controller_message = tr("wmi_error") if not self.wmi_interface._is_running else tr("ready")
+        current_controller_message = "wmi_error" if not self.wmi_interface._is_running else ""
         if self._controller_status_message != current_controller_message:
              self._controller_status_message = current_controller_message
         
@@ -629,7 +629,7 @@ class AppRunner(QObject):
             except Exception as e:
                  print(f"Warning: Failed to update/save final profile settings during shutdown: {e}", file=sys.stderr)
             self.config_manager.save_config()
-            print("AppRunner: Configuration saved.")
+            print("AppRunner: Config saved.")
 
         print("AppRunner: Shutdown complete.")
         app = QApplication.instance()

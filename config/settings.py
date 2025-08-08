@@ -22,7 +22,7 @@ APP_ICON_NAME: str = "app_icon.ico"
 TASK_XML_FILE_NAME: str = "task_template.xml" # For custom task scheduler definitions
 
 # ==============================================================================
-# Default Configuration Values
+# Default Config Values
 # ==============================================================================
 NUM_PROFILES: int = 6
 DEFAULT_PROFILE_PREFIX: str = "Config" # Base name for default profiles, number added later
@@ -94,7 +94,7 @@ DEFAULT_PROFILE_SETTINGS: Dict[str, any] = {
 }
 
 # ==============================================================================
-# WMI Configuration
+# WMI Config
 # ==============================================================================
 WMI_NAMESPACE: str = "root\\WMI"
 DEFAULT_WMI_GET_CLASS: str = "GB_WMIACPI_Get"
@@ -166,7 +166,7 @@ COMMAND_QUIT: int = 1
 COMMAND_SHOW: int = 2 # Command to request the main window to show itself
 
 # ==============================================================================
-# Font Configuration (for Matplotlib)
+# Font Config (for Matplotlib)
 # ==============================================================================
 # Attempt to use preferred fonts, fallback to generic sans-serif
 PREFERRED_FONTS: List[str] = ['Microsoft YaHei', 'DengXian', 'SimHei', 'Arial Unicode MS', 'sans-serif']

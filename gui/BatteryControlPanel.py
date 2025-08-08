@@ -251,7 +251,7 @@ class BatteryControlPanel(QFrame):
             val = int(current_val_str)
             self.charge_threshold_value_label.setText(f"{val}{tr('percent_unit')}" if is_custom_mode else f"({val}{tr('percent_unit')})")
         except ValueError:
-             self.charge_threshold_value_label.setText(f"---{tr('percent_unit')}" if is_custom_mode else f"(---{tr('percent_unit')})")
+             self.charge_threshold_value_label.setText(tr("value_not_available"))
 
 
 if __name__ == '__main__':

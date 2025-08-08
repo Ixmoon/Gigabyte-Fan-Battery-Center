@@ -25,8 +25,8 @@ from .localization import tr
 def _run_schtasks(args: List[str]) -> Tuple[bool, str]:
     """Helper function to run schtasks.exe command."""
     if os.name != 'nt':
-        return False, "Task Scheduler functions are only available on Windows."
-
+        return False, "Task Scheduler functions are only available on Windows." # This is a developer-facing message, no need to translate
+ 
     command = ['schtasks'] + args
     command_str = " ".join(command)
 
@@ -47,7 +47,7 @@ def _run_schtasks(args: List[str]) -> Tuple[bool, str]:
         )
         return True, result.stdout
     except FileNotFoundError:
-        error_msg = "Error: 'schtasks.exe' not found. Is it in your system's PATH?"
+        error_msg = "Error: 'schtasks.exe' not found. Is it in your system's PATH?" # Developer-facing
         return False, error_msg
     except subprocess.CalledProcessError as e:
         # Combine stdout and stderr for error reporting as schtasks sometimes uses stdout for errors
@@ -55,7 +55,7 @@ def _run_schtasks(args: List[str]) -> Tuple[bool, str]:
         error_msg = f"schtasks command failed with exit code {e.returncode}.\nCommand: {command_str}\nError: {error_output.strip()}"
         return False, error_msg
     except Exception as e:
-        error_msg = f"An unexpected error occurred running schtasks.\nCommand: {command_str}\nError: {e}"
+        error_msg = f"An unexpected error occurred running schtasks.\nCommand: {command_str}\nError: {e}" # Developer-facing
         return False, error_msg
 
 def create_startup_task(base_dir: str) -> Tuple[bool, str]:
@@ -206,8 +206,8 @@ def create_startup_task(base_dir: str) -> Tuple[bool, str]:
             final_error_msg = tr("task_scheduler_error_msg", command=error_command_display, error=detailed_error)
             return False, final_error_msg
         else:
-            return True, f"Startup task '{task_name}' created or updated successfully."
-
+            return True, tr("task_created_success")
+ 
     except IOError as e:
         error_msg = tr("task_scheduler_error_msg", command="XML File Operation", error=f"Failed to write temporary XML file: {e}")
         return False, error_msg
@@ -237,14 +237,14 @@ def delete_startup_task() -> Tuple[bool, str]:
     if not success:
         # Check if the error is simply that the task doesn't exist (which is success for deletion)
         if "ERROR: The system cannot find the file specified." in output:
-            return True, f"Startup task '{task_name}' was not found (already deleted)."
+            return True, tr("task_delete_failed_not_found")
         else:
             # Report other errors during deletion
             error_command_display = f"schtasks {' '.join(args)}"
             final_error_msg = tr("task_scheduler_error_msg", command=error_command_display, error=output)
             return False, final_error_msg
     else:
-        return True, f"Startup task '{task_name}' deleted successfully."
+        return True, tr("task_deleted_success")
 
 def is_startup_task_registered() -> bool:
     """
