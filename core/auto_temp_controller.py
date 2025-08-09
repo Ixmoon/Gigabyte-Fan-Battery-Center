@@ -7,8 +7,6 @@ temperature reads, and fan speed application.
 """
 
 from typing import List, Optional, Dict
-import numpy as np
-from scipy.interpolate import PchipInterpolator
 import sys
 
 # --- NEW: Import QTimer and dependencies ---
@@ -17,6 +15,7 @@ from gui.qt import QObject, QTimer, Slot
 # --- MODIFICATION: Import dependencies directly ---
 from .wmi_interface import WMIInterface
 from .fan_controller import FanController
+from .interpolation import PchipInterpolator, clip, interp
 # --- END MODIFICATION ---
 
 # Import settings for curve validation, limits, and auto-mode defaults
@@ -129,15 +128,11 @@ class AutoTemperatureController(QObject):
             self.reset_state() # Reset state when starting
             interval_ms = max(100, int(self._adjustment_interval_s * 1000))
             self._adjustment_timer.start(interval_ms)
-            print("AutoTemperatureController: Started adjustment timer.") # Debug
-            # Perform an initial step immediately? Optional.
-            # self._perform_adjustment_step()
 
     def stop_auto_mode(self):
         """Stops the internal timer for automatic fan adjustments."""
         if self._adjustment_timer.isActive():
             self._adjustment_timer.stop()
-            print("AutoTemperatureController: Stopped adjustment timer.") # Debug
         self.reset_state() # Reset state when stopping
     # --- END NEW ---
 
@@ -149,48 +144,57 @@ class AutoTemperatureController(QObject):
         return sorted(valid_points, key=lambda x: x[0])
 
     def _create_interpolator(self, table: FanTable, curve_name: str) -> Optional[PchipInterpolator]:
-        """Creates a PchipInterpolator from a fan table."""
+        """Creates a PchipInterpolator from a fan table using the local implementation."""
         if len(table) < MIN_POINTS_FOR_INTERPOLATION: return None
-        temps = np.array([p[0] for p in table])
-        speeds = np.array([p[1] for p in table])
+        
+        # Ensure unique temperature points for the interpolator
         unique_temps_map: Dict[float, float] = {}
-        for t, s in zip(temps, speeds):
-            if t not in unique_temps_map or s > unique_temps_map[t]: unique_temps_map[t] = s
-        unique_temps = np.array(sorted(unique_temps_map.keys()))
-        unique_speeds = np.array([unique_temps_map[t] for t in unique_temps])
-        if len(unique_temps) < MIN_POINTS_FOR_INTERPOLATION: return None
+        for t, s in table:
+            if t not in unique_temps_map or s > unique_temps_map[t]:
+                unique_temps_map[t] = s
+        
+        if len(unique_temps_map) < MIN_POINTS_FOR_INTERPOLATION: return None
+        
+        unique_temps = sorted(unique_temps_map.keys())
+        unique_speeds = [unique_temps_map[t] for t in unique_temps]
+        
         try:
+            # Use the local, dependency-free PchipInterpolator
             return PchipInterpolator(unique_temps, unique_speeds, extrapolate=False)
         except Exception as e:
             print(f"Error creating {curve_name} PCHIP interpolator: {e}", file=sys.stderr)
             return None
 
+    def _linear_interpolate(self, temperature: float, table: FanTable) -> float:
+        """Performs simple linear interpolation as a fallback."""
+        temps = [p[0] for p in table]
+        speeds = [p[1] for p in table]
+        return interp(temperature, temps, speeds)
+
     def _interpolate_single_curve(self, temperature: float, table: FanTable, interpolator: Optional[PchipInterpolator]) -> int:
-        """Calculates target speed for a single curve using interpolation or linear fallback."""
+        """
+        Calculates target speed for a single curve using PCHIP interpolation
+        with a robust fallback to linear interpolation.
+        """
         if not table: return MIN_FAN_PERCENT
         if temperature == TEMP_READ_ERROR_VALUE: return MIN_FAN_PERCENT
+
         min_temp_curve, min_speed_curve = table[0]
         max_temp_curve, max_speed_curve = table[-1]
+
         if temperature <= min_temp_curve: return int(min_speed_curve)
         if temperature >= max_temp_curve: return int(max_speed_curve)
+
+        interp_speed = 0.0
         if interpolator:
             try:
                 interp_speed = interpolator(temperature)
-                if np.isnan(interp_speed): return self._linear_interpolate(temperature, table)
-                return int(max(MIN_FAN_PERCENT, min(MAX_FAN_PERCENT, round(float(interp_speed)))))
-            except Exception: return self._linear_interpolate(temperature, table)
-        else: return self._linear_interpolate(temperature, table)
-
-    def _linear_interpolate(self, temperature: float, table: FanTable) -> int:
-        """Performs simple linear interpolation between points."""
-        for i in range(len(table) - 1):
-            temp1, speed1 = table[i]
-            temp2, speed2 = table[i+1]
-            if temp1 <= temperature < temp2:
-                if temp2 == temp1: return int(speed1)
-                interp_speed = speed1 + (temperature - temp1) * (speed2 - speed1) / (temp2 - temp1)
-                return int(max(MIN_FAN_PERCENT, min(MAX_FAN_PERCENT, round(interp_speed))))
-        return int(table[-1][1])
+            except Exception:
+                interp_speed = self._linear_interpolate(temperature, table)
+        else:
+            interp_speed = self._linear_interpolate(temperature, table)
+        
+        return int(round(float(clip(interp_speed, MIN_FAN_PERCENT, MAX_FAN_PERCENT))))
 
     def _calculate_theoretical_target(self, cpu_temp: float, gpu_temp: float) -> int:
         """Calculates the raw target speed based on temps and curves."""
@@ -210,87 +214,82 @@ class AutoTemperatureController(QObject):
         step_size = max(self._min_step, min(self._max_step, step_size))
         return max(1, step_size)
 
-    @Slot()
-    def _perform_adjustment_step(self):
+    def _update_active_target(self, current_applied_speed: int) -> bool:
         """
-        Internal slot called by the timer. Reads temps, determines target,
-        calculates step, and applies speed via FanController.
-        """
-        # Ensure WMI is running before proceeding
-        if not self._wmi._is_running:
-             # print("AutoTemperatureController: WMI not running, skipping adjustment step.") # Debug
-             self.stop_auto_mode() # Stop auto mode if WMI fails
-             return
+        Reads temperatures, calculates the theoretical target, applies hysteresis,
+        and updates the internal active target speed if necessary.
 
-        # 1. Read current data
+        Returns:
+            bool: True if the active target was changed, False otherwise.
+        """
         cpu_temp = self._wmi.get_cpu_temperature()
         gpu_temp = self._wmi.get_gpu_temperature()
-        # --- MODIFICATION: Get current speed directly from FanController ---
-        current_applied_speed = self._fan.applied_percentage
-        # --- END MODIFICATION ---
-
-        # 2. Calculate theoretical target
         theoretical_target = self._calculate_theoretical_target(cpu_temp, gpu_temp)
-        self._last_theoretical_target = theoretical_target # Store for external query
+        self._last_theoretical_target = theoretical_target
 
-        # 3. Apply Hysteresis & Calculate Step Size if Target Changes
-        target_changed = False
         if self._active_target_percentage == INIT_APPLIED_PERCENTAGE or \
            abs(theoretical_target - self._active_target_percentage) > self._hysteresis_percent:
             if self._active_target_percentage != theoretical_target:
-                # print(f"AutoTempController: New target {theoretical_target} (Old: {self._active_target_percentage}, Hys: {self._hysteresis_percent})") # Debug
                 self._active_target_percentage = theoretical_target
-                target_changed = True
-                # Calculate and store step size based on the difference *now*
                 initial_delta = abs(self._active_target_percentage - current_applied_speed)
                 self._current_adjustment_step_size = self._calculate_adjustment_step_size(initial_delta)
                 self._speed_at_target_set = current_applied_speed
-                # print(f"AutoTempController: Target changed. Initial Delta: {initial_delta}, New Step: {self._current_adjustment_step_size}") # Debug
+                return True
+        return False
 
+    def _calculate_next_speed(self, current_applied_speed: int) -> Optional[int]:
+        """
+        Determines the next fan speed to apply based on the active target.
 
-        # 4. Determine Next Speed Step
-        target_for_adjustment = self._active_target_percentage
-        speed_to_apply: Optional[int] = None
-
-        if target_for_adjustment != INIT_APPLIED_PERCENTAGE and current_applied_speed != target_for_adjustment:
-            step_size = self._current_adjustment_step_size
-            if step_size is None: # Should only happen on first run after target set or mode switch
-                initial_delta = abs(target_for_adjustment - current_applied_speed)
-                step_size = self._calculate_adjustment_step_size(initial_delta)
-                self._current_adjustment_step_size = step_size
-                # print(f"AutoTempController: Step size was None, calculated: {step_size}") # Debug
-
-
-            # Ensure step_size is valid
-            step_size = max(1, step_size) if target_for_adjustment != current_applied_speed else 0
-
-            # Calculate next speed
-            next_speed = current_applied_speed
-            if target_for_adjustment > current_applied_speed:
-                next_speed = min(target_for_adjustment, current_applied_speed + step_size)
-            elif target_for_adjustment < current_applied_speed:
-                next_speed = max(target_for_adjustment, current_applied_speed - step_size)
-
-            # Set speed_to_apply if different
-            if next_speed != current_applied_speed:
-                speed_to_apply = next_speed
-
-            # Reset step size if target is reached
-            if next_speed == target_for_adjustment:
-                # print(f"AutoTempController: Target {target_for_adjustment} reached.") # Debug
+        Returns:
+            Optional[int]: The new speed to apply, or None if no change is needed.
+        """
+        target = self._active_target_percentage
+        if target == INIT_APPLIED_PERCENTAGE or current_applied_speed == target:
+            if self._current_adjustment_step_size is not None:
                 self._current_adjustment_step_size = None
                 self._speed_at_target_set = INIT_APPLIED_PERCENTAGE
-        else:
-             # Target reached or no target set, ensure step size is reset
-             if self._current_adjustment_step_size is not None:
-                 # print(f"AutoTempController: Target {target_for_adjustment} already met or invalid. Resetting step.") # Debug
-                 self._current_adjustment_step_size = None
-                 self._speed_at_target_set = INIT_APPLIED_PERCENTAGE
+            return None
 
-        # 5. Apply Speed using FanController
+        step_size = self._current_adjustment_step_size
+        if step_size is None:
+            initial_delta = abs(target - current_applied_speed)
+            step_size = self._calculate_adjustment_step_size(initial_delta)
+            self._current_adjustment_step_size = step_size
+
+        step_size = max(1, step_size)
+
+        next_speed = current_applied_speed
+        if target > current_applied_speed:
+            next_speed = min(target, current_applied_speed + step_size)
+        elif target < current_applied_speed:
+            next_speed = max(target, current_applied_speed - step_size)
+
+        if next_speed == target:
+            self._current_adjustment_step_size = None
+            self._speed_at_target_set = INIT_APPLIED_PERCENTAGE
+
+        return next_speed if next_speed != current_applied_speed else None
+
+    @Slot()
+    def _perform_adjustment_step(self):
+        """
+        Internal slot called by the timer. Orchestrates the fan adjustment logic.
+        """
+        # Use the public property of the WMI interface
+        if not self._wmi.is_running:
+            self.stop_auto_mode()
+            return
+
+        current_applied_speed = self._fan.applied_percentage
+
+        # 1. Update the active target based on current temperatures and hysteresis.
+        self._update_active_target(current_applied_speed)
+
+        # 2. Calculate the next speed step towards the active target.
+        speed_to_apply = self._calculate_next_speed(current_applied_speed)
+
+        # 3. Apply the new speed if a change is required.
         if speed_to_apply is not None:
-            # print(f"AutoTempController: Applying speed {speed_to_apply}") # Debug
             self._fan.apply_speed_percent(speed_to_apply)
-            # FanController updates its internal state. AppRunner's status update
-            # will pick up the new applied speed next time it runs.
 

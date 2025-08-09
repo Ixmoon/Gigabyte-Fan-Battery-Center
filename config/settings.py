@@ -30,13 +30,21 @@ DEFAULT_LANGUAGE: str = "en" # Default language code (ISO 639-1)
 DEFAULT_START_ON_BOOT: bool = False
 DEFAULT_START_MINIMIZED: bool = False # Default for when launched via auto-start task
 
+# --- Core State Constants ---
+FAN_MODE_AUTO = "auto"
+FAN_MODE_FIXED = "fixed"
+FAN_MODE_UNKNOWN = "unknown"
+CHARGE_POLICY_STANDARD_STR = "standard"
+CHARGE_POLICY_CUSTOM_STR = "custom"
+FAN_MODE_AUTO_EQUIVALENT_SPEED = 0 # The speed that effectively enables EC/BIOS auto control
+
 # --- Default Profile Settings ---
 # These define the structure and default values for *each* profile
 DEFAULT_CPU_FAN_TABLE: List[List[int]] = [[50, 0], [60, 15], [70, 25], [80, 40], [85, 60], [90, 80], [95, 100]]
 DEFAULT_GPU_FAN_TABLE: List[List[int]] = [[40, 0], [55, 15], [65, 25], [70, 40], [75, 60], [80, 80], [85, 100]]
-DEFAULT_FAN_MODE: str = "auto" # "auto" or "fixed"
+DEFAULT_FAN_MODE: str = FAN_MODE_AUTO
 DEFAULT_FIXED_FAN_SPEED: int = 30 # Percentage
-DEFAULT_CHARGE_POLICY: str = "custom" # "standard" or "custom"
+DEFAULT_CHARGE_POLICY: str = CHARGE_POLICY_CUSTOM_STR
 DEFAULT_CHARGE_THRESHOLD: int = 80 # Percentage
 
 # --- Default Control Logic & Timing (per profile) ---
@@ -123,6 +131,17 @@ WMI_REQUEST_TIMEOUT_S: float = 5.0
 # --- WMI Worker Communication ---
 WMI_WORKER_STOP_SIGNAL: str = "STOP_WMI_WORKER" # Signal to stop the worker thread
 
+# --- WMI Worker Actions (used for internal request queue) ---
+WMI_ACTION_GET_CPU_TEMP: str = "get_cpu_temp"
+WMI_ACTION_GET_GPU_TEMP: str = "get_gpu_temp"
+WMI_ACTION_GET_RPM: str = "get_rpm"
+WMI_ACTION_GET_CHARGE_POLICY: str = "get_charge_policy"
+WMI_ACTION_GET_CHARGE_STOP: str = "get_charge_stop"
+WMI_ACTION_CONFIGURE_MANUAL_FAN: str = "configure_manual_fan"
+WMI_ACTION_SET_FAN_SPEED_RAW: str = "set_fan_speed_raw"
+WMI_ACTION_SET_CHARGE_POLICY: str = "set_charge_policy"
+WMI_ACTION_SET_CHARGE_STOP: str = "set_charge_stop"
+
 # --- WMI Error/Default Values ---
 TEMP_READ_ERROR_VALUE: float = -1.0
 RPM_READ_ERROR_VALUE: int = -1
@@ -163,7 +182,9 @@ SHARED_MEM_COMMAND_OFFSET: int = 32 # Command byte starts after HWND block
 SHARED_MEM_COMMAND_SIZE: int = 1 # Just one byte for the command
 COMMAND_NONE: int = 0
 COMMAND_QUIT: int = 1
-COMMAND_SHOW: int = 2 # Command to request the main window to show itself
+# COMMAND_SHOW is now fully removed.
+COMMAND_RELOAD_AND_SHOW: int = 3 # Reload config and show window (for manual launch)
+COMMAND_RELOAD_ONLY: int = 4 # Reload config only (for task scheduler launch)
 
 # ==============================================================================
 # Font Config (for Matplotlib)

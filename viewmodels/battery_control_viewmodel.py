@@ -4,33 +4,37 @@
 ViewModel for BatteryControlPanel.
 """
 from gui.qt import QObject, Signal, Slot
+from .base_viewmodel import BaseViewModel
+from config.settings import CHARGE_POLICY_STANDARD_STR, CHARGE_POLICY_CUSTOM_STR
 
 from typing import Optional, TYPE_CHECKING
 if TYPE_CHECKING:
-    from run import AppRunner
+    from core.app_services import AppServices
 
-class BatteryControlViewModel(QObject):
+class BatteryControlViewModel(BaseViewModel):
     """
     Manages the state and logic for battery control.
-    Communicates changes to AppRunner and updates BatteryControlPanel via signals.
+    Communicates with AppServices and updates BatteryControlPanel via signals.
     """
-    # Signals to notify BatteryControlPanel (View) of state changes
-    charge_policy_updated = Signal(str) # 'standard' or 'custom'
-    charge_threshold_updated = Signal(int) # current threshold for display
-    applied_charge_threshold_updated = Signal(int) # actual applied threshold from status
-    panel_enabled_changed = Signal(bool) # To enable/disable the panel
-    charge_limit_control_enabled_updated = Signal(bool) # True if custom policy, False otherwise
-    threshold_slider_lock_updated = Signal(bool) # True to lock slider, False to unlock
+    # --- Signals to notify View ---
+    charge_policy_updated = Signal(str)
+    charge_threshold_updated = Signal(int)
+    applied_charge_threshold_updated = Signal(int)
+    charge_limit_control_enabled_updated = Signal(bool)
+    threshold_slider_lock_updated = Signal(bool)
 
-    def __init__(self, app_runner: 'AppRunner', parent: Optional[QObject] = None):
+    # --- Signals to AppServices ---
+    charge_policy_set_requested = Signal(str, int)
+    charge_threshold_set_requested = Signal(int)
+
+    def __init__(self, app_services: 'AppServices', parent: Optional[QObject] = None):
         super().__init__(parent)
-        self._app_runner = app_runner
+        self.app_services = app_services
 
-        self._current_charge_policy: str = "standard" # Default
-        self._current_charge_threshold: int = 80 # Default for slider position
-        self._applied_charge_threshold: int = 0 # Actual threshold from hardware status
-        self._is_panel_enabled: bool = True
-        self._is_threshold_applying: bool = False # State for locking threshold slider
+        self._current_charge_policy: str = CHARGE_POLICY_STANDARD_STR
+        self._current_charge_threshold: int = 80
+        self._applied_charge_threshold: int = 0
+        self._is_threshold_applying: bool = False
 
     # --- Getters for View ---
     def get_current_charge_policy(self) -> str:
@@ -38,121 +42,74 @@ class BatteryControlViewModel(QObject):
 
     def get_current_charge_threshold(self) -> int:
         return self._current_charge_threshold
-        
+
     def get_applied_charge_threshold(self) -> int:
         return self._applied_charge_threshold
 
-    def is_panel_enabled(self) -> bool:
-        return self._is_panel_enabled
-
-    # --- Slots for BatteryControlPanel (View) to call ---
+    # --- Slots for View to call ---
     @Slot(str)
     def set_charge_policy(self, policy: str):
-        """Called by BatteryControlPanel when user changes charge policy."""
-        if policy not in ["standard", "custom"]:
+        """Called by View. Emits a signal to request a policy change from AppServices."""
+        if policy not in [CHARGE_POLICY_STANDARD_STR, CHARGE_POLICY_CUSTOM_STR] or self._current_charge_policy == policy:
             return
-        if self._current_charge_policy != policy:
-            self._current_charge_policy = policy
-            # Communicate change to AppRunner by calling its hardware-specific method
-            self._app_runner.set_charge_policy_for_hardware(
-                self._current_charge_policy,
-                self._current_charge_threshold if self._current_charge_policy == "custom" else None
-            )
-            self.charge_policy_updated.emit(self._current_charge_policy)
-            self.charge_limit_control_enabled_updated.emit(self._current_charge_policy == "custom")
-            # No need to explicitly call set_charge_threshold here if policy becomes "custom",
-            # as set_charge_policy_for_hardware in AppRunner will handle applying the current threshold.
+        # Optimistically update UI
+        self._current_charge_policy = policy
+        self.charge_policy_updated.emit(policy)
+        self.charge_limit_control_enabled_updated.emit(policy == CHARGE_POLICY_CUSTOM_STR)
+        # Request change from the service layer
+        self.charge_policy_set_requested.emit(policy, self._current_charge_threshold)
 
     @Slot(int)
     def set_charge_threshold(self, threshold: int):
-        """Called by BatteryControlPanel when user changes charge threshold slider."""
+        """Called by View. Emits a signal to request a threshold change from AppServices."""
         if self._is_threshold_applying:
-            return # Ignore if already applying
+            return
 
-        threshold = max(0, min(100, threshold)) # Clamp value
-        
-        # self._current_charge_threshold = threshold # Update desired value
-        # self.charge_threshold_updated.emit(self._current_charge_threshold) # Update UI slider position
+        threshold = max(0, min(100, threshold))
+        self._current_charge_threshold = threshold
+        self.charge_threshold_updated.emit(threshold)
 
-        if self._current_charge_policy == "custom":
+        if self._current_charge_policy == CHARGE_POLICY_CUSTOM_STR:
             self._is_threshold_applying = True
-            self.threshold_slider_lock_updated.emit(False) # Disable slider (lock)
-            self._app_runner.set_charge_threshold_for_hardware(threshold)
-        else:
-            # If not in custom mode, just update the potential threshold value
-            if self._current_charge_threshold != threshold:
-                self._current_charge_threshold = threshold
-                self.charge_threshold_updated.emit(self._current_charge_threshold)
+            self.threshold_slider_lock_updated.emit(False) # Lock slider
+            self.charge_threshold_set_requested.emit(threshold)
 
+    # --- Slots for AppServices to call ---
+    @Slot(str, int)
+    def update_from_service(self, policy: Optional[str], threshold: int):
+        """Called by AppServices with the current, confirmed hardware state."""
+        effective_policy = policy if policy in [CHARGE_POLICY_STANDARD_STR, CHARGE_POLICY_CUSTOM_STR] else CHARGE_POLICY_STANDARD_STR
 
-    @Slot(int)
-    def confirm_charge_threshold_applied(self, applied_threshold: int):
-        """Called by AppRunner after charge threshold has been confirmed by hardware."""
-        self._current_charge_threshold = applied_threshold
-        self._applied_charge_threshold = applied_threshold
-        
-        self.charge_threshold_updated.emit(self._current_charge_threshold)
-        self.applied_charge_threshold_updated.emit(self._applied_charge_threshold)
-        
-        self._is_threshold_applying = False
-        self.threshold_slider_lock_updated.emit(True) # Re-enable slider (unlock)
-
-    # --- Slots for AppRunner (Model/Controller) to call ---
-    @Slot(str)
-    def update_charge_policy_from_status(self, policy: Optional[str]):
-        """Called by AppRunner with current charge policy from hardware/status."""
-        # Handle cases where policy might be None from status if unknown
-        effective_policy = policy if policy in ["standard", "custom"] else "standard"
         if self._current_charge_policy != effective_policy:
             self._current_charge_policy = effective_policy
-            self.charge_policy_updated.emit(self._current_charge_policy)
-            self.charge_limit_control_enabled_updated.emit(self._current_charge_policy == "custom")
+            self.charge_policy_updated.emit(effective_policy)
+            self.charge_limit_control_enabled_updated.emit(effective_policy == CHARGE_POLICY_CUSTOM_STR)
 
-    @Slot(int)
-    def update_applied_charge_threshold_from_status(self, threshold: int):
-        """Called by AppRunner with current applied charge threshold from hardware/status."""
         if self._applied_charge_threshold != threshold:
             self._applied_charge_threshold = threshold
-            self.applied_charge_threshold_updated.emit(self._applied_charge_threshold)
-            # Also update the _current_charge_threshold if in custom mode
-            if self._current_charge_policy == "custom" and self._current_charge_threshold != threshold:
-                self._current_charge_threshold = threshold
-                self.charge_threshold_updated.emit(self._current_charge_threshold)
+            self.applied_charge_threshold_updated.emit(threshold)
 
-    @Slot(bool)
-    def set_panel_enabled(self, enabled: bool):
-        """Called by AppRunner/MainWindow to globally enable/disable controls."""
-        if self._is_panel_enabled != enabled:
-            self._is_panel_enabled = enabled
-            self.panel_enabled_changed.emit(self._is_panel_enabled)
+        if effective_policy == CHARGE_POLICY_CUSTOM_STR and self._current_charge_threshold != threshold:
+            self._current_charge_threshold = threshold
+            self.charge_threshold_updated.emit(threshold)
 
+        if self._is_threshold_applying:
+            self._is_threshold_applying = False
+            self.threshold_slider_lock_updated.emit(True) # Unlock slider
+
+    @Slot(dict)
     def apply_profile_settings(self, settings: dict):
-        """Applies battery-related settings from a profile."""
+        """Applies battery-related settings from a profile provided by AppServices."""
         new_policy = settings.get("charge_policy", self._current_charge_policy)
         new_threshold = settings.get("charge_threshold", self._current_charge_threshold)
 
-        policy_changed = False
         if self._current_charge_policy != new_policy:
             self._current_charge_policy = new_policy
-            policy_changed = True
+            self.charge_policy_updated.emit(new_policy)
+            self.charge_limit_control_enabled_updated.emit(new_policy == "custom")
 
-        threshold_changed = False
         if self._current_charge_threshold != new_threshold:
             self._current_charge_threshold = new_threshold
-            threshold_changed = True
-            
-        if policy_changed:
-            self.charge_policy_updated.emit(self._current_charge_policy)
-            self.charge_limit_control_enabled_updated.emit(self._current_charge_policy == "custom")
-        
-        if threshold_changed: # This updates the slider position
-            self.charge_threshold_updated.emit(self._current_charge_threshold)
-        
-        # AppRunner will handle applying the full profile to hardware.
+            self.charge_threshold_updated.emit(new_threshold)
 
-    def get_current_settings_for_profile(self) -> dict:
-        """Returns current battery settings for saving to a profile."""
-        return {
-            "charge_policy": self._current_charge_policy,
-            "charge_threshold": self._current_charge_threshold
-        }
+    # get_current_settings_for_profile removed. AppServices is now the source of truth.

@@ -9,8 +9,9 @@ from typing import Optional, Tuple
 
 from .wmi_interface import WMIInterface
 from config.settings import (
-    CHARGE_POLICY_STANDARD, CHARGE_POLICY_CUSTOM,CHARGE_THRESHOLD_READ_ERROR_VALUE,
-    MIN_CHARGE_PERCENT, MAX_CHARGE_PERCENT
+    CHARGE_POLICY_STANDARD, CHARGE_POLICY_CUSTOM, CHARGE_THRESHOLD_READ_ERROR_VALUE,
+    MIN_CHARGE_PERCENT, MAX_CHARGE_PERCENT,
+    CHARGE_POLICY_STANDARD_STR, CHARGE_POLICY_CUSTOM_STR
 )
 
 class BatteryController:
@@ -40,17 +41,17 @@ class BatteryController:
     def _policy_code_to_str(self, code: int) -> Optional[str]:
         """Converts WMI policy code to string representation."""
         if code == CHARGE_POLICY_STANDARD:
-            return "standard"
+            return CHARGE_POLICY_STANDARD_STR
         elif code == CHARGE_POLICY_CUSTOM:
-            return "custom"
+            return CHARGE_POLICY_CUSTOM_STR
         else:
             return None # Unknown code
 
     def _policy_str_to_code(self, policy: str) -> Optional[int]:
         """Converts string representation to WMI policy code."""
-        if policy == "standard":
+        if policy == CHARGE_POLICY_STANDARD_STR:
             return CHARGE_POLICY_STANDARD
-        elif policy == "custom":
+        elif policy == CHARGE_POLICY_CUSTOM_STR:
             return CHARGE_POLICY_CUSTOM
         else:
             return None

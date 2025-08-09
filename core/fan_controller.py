@@ -12,7 +12,8 @@ import sys
 
 from .wmi_interface import WMIInterface
 from config.settings import (
-    MIN_FAN_PERCENT, MAX_FAN_PERCENT, INIT_APPLIED_PERCENTAGE
+    MIN_FAN_PERCENT, MAX_FAN_PERCENT, INIT_APPLIED_PERCENTAGE,
+    FAN_MODE_AUTO, FAN_MODE_FIXED, FAN_MODE_UNKNOWN, FAN_MODE_AUTO_EQUIVALENT_SPEED
 )
 
 # --- Define the minimum threshold for manual mode ---
@@ -30,7 +31,7 @@ class FanController:
             wmi_interface: An instance of WMIInterface for hardware communication.
         """
         self._wmi = wmi_interface
-        self._current_mode: str = "unknown" # "auto", "fixed", "unknown"
+        self._current_mode: str = FAN_MODE_UNKNOWN
         # _applied_percentage stores the last percentage value successfully *sent* to WMI
         self._applied_percentage: int = INIT_APPLIED_PERCENTAGE
 
@@ -80,20 +81,20 @@ class FanController:
         # 1. Ensure WMI is configured for manual control
         if not self._wmi.configure_manual_fan_control():
             print("Error: Failed to configure WMI for manual fan control.", file=sys.stderr)
-            self._current_mode = "unknown"
+            self._current_mode = FAN_MODE_UNKNOWN
             self._applied_percentage = INIT_APPLIED_PERCENTAGE
             return False
 
         # 2. Set the desired speed
         if self._wmi.set_fan_speed_raw(raw_speed):
-            self._current_mode = "fixed"
+            self._current_mode = FAN_MODE_FIXED
             # Store the effective percentage that was actually sent
             self._applied_percentage = effective_percentage
             return True
         else:
             # Use original requested percentage in error message for clarity
             print(f"Error: Failed to set fixed fan speed to {percentage}% (Effective: {effective_percentage}%, Raw: {raw_speed}).", file=sys.stderr)
-            self._current_mode = "unknown" # Revert state on failure
+            self._current_mode = FAN_MODE_UNKNOWN # Revert state on failure
             self._applied_percentage = INIT_APPLIED_PERCENTAGE
             return False
 
@@ -110,14 +111,14 @@ class FanController:
         Returns:
             True if the operation likely succeeded, False otherwise.
         """
-        # Use set_mode_fixed(0). The _get_effective_manual_percentage(0) returns 0.
-        if self.set_mode_fixed(0):
-             self._current_mode = "auto" # Logically, we requested auto mode
-             # _applied_percentage is already set to 0 by set_mode_fixed(0)
+        # Use set_mode_fixed with the defined equivalent speed for auto mode.
+        if self.set_mode_fixed(FAN_MODE_AUTO_EQUIVALENT_SPEED):
+             self._current_mode = FAN_MODE_AUTO # Logically, we requested auto mode
+             # _applied_percentage is already set by set_mode_fixed()
              return True
         else:
              print("Error: Failed to set fans to 0% to attempt enabling auto mode.", file=sys.stderr)
-             self._current_mode = "unknown"
+             self._current_mode = FAN_MODE_UNKNOWN
              self._applied_percentage = INIT_APPLIED_PERCENTAGE
              return False
 

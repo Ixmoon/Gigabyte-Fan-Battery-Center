@@ -7,42 +7,28 @@ Contains controls for charge policy (Standard/Custom) and custom charge threshol
 """
 from .qt import (
     QWidget, QHBoxLayout, QLabel, QRadioButton, QButtonGroup,
-    QSlider, QSpacerItem, QSizePolicy, QFrame, Qt, Signal, Slot, QTimer
+    QSlider, QSpacerItem, QSizePolicy, QFrame, Qt, Slot
 )
+from .base_control_panel import BaseControlPanel
 from typing import TYPE_CHECKING
 
 from tools.localization import tr
-# from config.settings import DEFAULT_PROFILE_SETTINGS # ViewModel will provide defaults
 
 if TYPE_CHECKING:
     from viewmodels.battery_control_viewmodel import BatteryControlViewModel
 
 
-class BatteryControlPanel(QFrame):
+class BatteryControlPanel(BaseControlPanel['BatteryControlViewModel']):
     """
     A QFrame subclass that groups controls related to battery management.
-    Interacts with a ViewModel for its logic and state.
+    Inherits from BaseControlPanel to reduce boilerplate.
     """
-    transient_status_signal = Signal(str) # Signal to MainWindow to show a temporary status
-
     def __init__(self, view_model: 'BatteryControlViewModel', parent: QWidget = None):
         """
         Initializes the BatteryControlPanel.
-
-        Args:
-            view_model: The ViewModel instance for battery control.
-            parent: The parent widget.
         """
-        super().__init__(parent)
-        self.setObjectName("batteryControlFrame") # Optional for styling
-        # self.setFrameShape(QFrame.Shape.StyledPanel)
-
-        self.view_model = view_model
-        # Removed _manual_slider_interacting, _block_slider_update, _update_block_timer
-        # This logic is now handled by the ViewModel or simplified.
-
-        self._init_ui()
-        self._connect_viewmodel_signals()
+        super().__init__(view_model, parent)
+        self.setObjectName("batteryControlFrame")
 
     def _init_ui(self) -> None:
         """
@@ -105,7 +91,7 @@ class BatteryControlPanel(QFrame):
         # Explicit call to _update_charge_limit_controls_enabled(self.view_model.current_policy == "custom") is removed from here
         # as _update_charge_policy_display will handle it.
 
-    def _connect_viewmodel_signals(self) -> None:
+    def _connect_to_view_model(self) -> None:
         """Connects signals from the ViewModel to panel slots."""
         self.view_model.charge_policy_updated.connect(self._update_charge_policy_display)
         self.view_model.charge_threshold_updated.connect(self._slot_for_ui_threshold_updated) # Connect to a new intermediate slot
@@ -113,6 +99,7 @@ class BatteryControlPanel(QFrame):
         # Corrected signal name and connection to a new slot that queries current policy
         self.view_model.applied_charge_threshold_updated.connect(self._handle_applied_threshold_update_from_vm)
         self.view_model.threshold_slider_lock_updated.connect(self._update_threshold_slider_lock_state)
+        self.view_model.panel_enabled_changed.connect(self.set_panel_enabled)
 
 
     @Slot(int) # New slot to handle applied_charge_threshold_updated signal
@@ -245,70 +232,12 @@ class BatteryControlPanel(QFrame):
         self.charge_threshold_label.setText(tr("charge_threshold_label"))
         self.charge_threshold_slider.setToolTip(tr("threshold_slider_tooltip"))
 
-        current_val_str = self.charge_threshold_value_label.text().replace(tr('percent_unit', _fallback=True), '').replace('(', '').replace(')', '').strip()
-        is_custom_mode = self.custom_charge_radio.isChecked()
-        try:
-            val = int(current_val_str)
+        # Robustly update threshold value label from the ViewModel, not by parsing the UI.
+        val = self.view_model.get_applied_charge_threshold()
+        is_custom_mode = self.view_model.get_current_charge_policy() == "custom"
+        
+        if val >= 0: # Check for valid value
             self.charge_threshold_value_label.setText(f"{val}{tr('percent_unit')}" if is_custom_mode else f"({val}{tr('percent_unit')})")
-        except ValueError:
-             self.charge_threshold_value_label.setText(tr("value_not_available"))
+        else:
+            self.charge_threshold_value_label.setText(tr("value_not_available"))
 
-
-if __name__ == '__main__':
-    # Example Usage
-    import sys
-    from .qt import QApplication, QMainWindow
-
-    _translations = {
-        "en": {
-            "charge_policy_label": "Charge Policy:", "mode_standard": "Standard", "mode_custom": "Custom",
-            "policy_standard_tooltip": "Standard charging policy (manufacturer default).",
-            "policy_custom_tooltip": "Custom charging thresholds (e.g., stop at 80%).",
-            "charge_threshold_label": "Charge Limit:", "percent_unit": "%",
-            "threshold_slider_tooltip": "Set custom upper charge limit (e.g., 60-100%)."
-        },
-        "_fallback": {"percent_unit": "%"}
-    }
-    current_lang = "en"
-    def tr(key, **kwargs):
-        _fallback = kwargs.pop('_fallback', False)
-        if _fallback:
-            return _translations.get("_fallback", {}).get(key, key).format(**kwargs)
-        return _translations.get(current_lang, {}).get(key, key).format(**kwargs)
-
-    app = QApplication(sys.argv)
-    main_win = QMainWindow()
-    panel = BatteryControlPanel(initial_policy="custom", initial_threshold=80)
-
-    def print_policy_change(policy):
-        print(f"Policy changed to: {policy}")
-        # Simulate AppRunner sending back current actual threshold
-        panel.set_charge_threshold(panel.charge_threshold_slider.value(), panel.charge_threshold_slider.value())
-
-
-    def print_threshold_change(threshold):
-        print(f"Threshold changed to: {threshold}%")
-        # Simulate AppRunner sending back current actual threshold
-        panel.set_charge_threshold(threshold, threshold)
-
-
-    panel.charge_policy_changed_signal.connect(print_policy_change)
-    panel.charge_threshold_changed_signal.connect(print_threshold_change)
-
-    main_win.setCentralWidget(panel)
-    main_win.show()
-    main_win.resize(550, 100)
-    
-    # Test programmatic updates
-    def test_updates():
-        print("Testing programmatic updates for Battery Panel...")
-        panel.set_charge_policy("standard")
-        # Simulate status update from AppRunner/ViewModel
-        panel.set_charge_threshold(70, 70) # Slider should update if mode was custom
-                                         # Label always updates with actual_threshold
-        QTimer.singleShot(2000, lambda: panel.set_charge_policy("custom"))
-        QTimer.singleShot(2500, lambda: panel.set_charge_threshold(90, 90)) # Update slider to 90, label to 90%
-
-    QTimer.singleShot(3000, test_updates)
-
-    sys.exit(app.exec())

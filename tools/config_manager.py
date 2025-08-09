@@ -19,7 +19,9 @@ from config.settings import (
     MIN_CURVE_POINTS,
     MIN_TEMP_C, MAX_TEMP_C,
     MIN_FAN_PERCENT, MAX_FAN_PERCENT,
-    MIN_CHARGE_PERCENT
+    MIN_CHARGE_PERCENT,
+    FAN_MODE_AUTO, FAN_MODE_FIXED,
+    CHARGE_POLICY_STANDARD_STR, CHARGE_POLICY_CUSTOM_STR
 )
 # Import localization for default profile names and error messages
 from .localization import tr, get_available_languages, set_language, get_current_language
@@ -27,6 +29,57 @@ from .localization import tr, get_available_languages, set_language, get_current
 # Type Hinting
 ProfileSettings = Dict[str, Any]
 ConfigDict = Dict[str, Any]
+
+# --- Validation Helper Functions (Module-level) ---
+
+def _is_valid_fan_table(table: Any) -> bool:
+    """Validates the structure and values of a fan curve table."""
+    if not isinstance(table, list) or len(table) < MIN_CURVE_POINTS:
+        return False
+    temps = set()
+    last_temp = -1.0
+    last_speed = -1.0
+    for i, item in enumerate(table):
+        if not isinstance(item, list) or len(item) != 2: return False
+        if not all(isinstance(val, (int, float)) for val in item): return False
+        temp, speed = item
+        if not (MIN_TEMP_C <= temp <= MAX_TEMP_C + 20): return False
+        if not (MIN_FAN_PERCENT <= speed <= MAX_FAN_PERCENT): return False
+        if temp in temps and speed < last_speed: return False
+        if temp < last_temp: return False
+        if speed < last_speed: return False
+        temps.add(temp)
+        last_temp = temp
+        last_speed = speed
+    return True
+
+def _validate_numeric(value: Any, default: Any, min_val: Optional[float] = None, max_val: Optional[float] = None) -> Any:
+    """Validates a numeric value against a type and optional range."""
+    if not isinstance(value, (int, float)):
+        return default
+    if min_val is not None and value < min_val:
+        return default
+    if max_val is not None and value > max_val:
+        return default
+    return value
+
+def _validate_choice(value: Any, default: str, choices: List[str], legacy_map: Optional[Dict[str, str]] = None) -> str:
+    """Validates a string value against a list of allowed choices."""
+    if legacy_map and value in legacy_map:
+        value = legacy_map[value]
+    return value if isinstance(value, str) and value in choices else default
+
+def _validate_color(value: Any, default: str) -> str:
+    """Validates a hex color string."""
+    if isinstance(value, str) and value.startswith('#') and len(value) in [7, 9]:
+        try:
+            int(value[1:], 16)
+            return value
+        except ValueError:
+            pass
+    return default
+
+# --- ConfigManager Class ---
 
 class ConfigManager:
     """Handles loading, saving, and validation of application configuration."""
@@ -38,15 +91,12 @@ class ConfigManager:
         Args:
             base_dir: The absolute base directory of the application.
         """
-        self.base_dir = base_dir # Store base directory
+        self.base_dir = base_dir
         self.filename = os.path.join(self.base_dir, CONFIG_FILE_NAME)
-        # Default structure is generated dynamically using potentially translated names
-        self.config: ConfigDict = self._get_default_config() # Load defaults initially
+        self.config: ConfigDict = self._get_default_config()
 
     def _get_default_profile_settings(self) -> ProfileSettings:
-        """Returns a dictionary containing all default settings for a single profile."""
-        # Simply return the imported default settings dictionary
-        # Make a deep copy to avoid modifying the original constant
+        """Returns a deep copy of the default settings for a single profile."""
         return {k: (list(v) if isinstance(v, list) else v) for k, v in DEFAULT_PROFILE_SETTINGS.items()}
 
     def _get_default_config(self) -> ConfigDict:
@@ -54,135 +104,79 @@ class ConfigManager:
         default_profiles = {}
         profile_defaults = self._get_default_profile_settings()
         for i in range(1, NUM_PROFILES + 1):
-            # Use tr() to get the potentially translated default name
             profile_name = tr("default_profile_name", num=i)
-            # Ensure uniqueness if default names clash (e.g., after language change)
             unique_name = profile_name
             counter = 1
             while unique_name in default_profiles:
                 unique_name = f"{profile_name} ({counter})"
                 counter += 1
-            default_profiles[unique_name] = profile_defaults.copy() # Use a copy
+            default_profiles[unique_name] = profile_defaults.copy()
 
-        # Determine the first profile name to set as active default
-        # Need to handle the potential unique naming applied above
         first_profile_name = tr("default_profile_name", num=1)
         if first_profile_name not in default_profiles:
-            # Find the name that starts with the base default name
             base_name = tr("default_profile_name", num=1)
-            found = False
             for name in default_profiles.keys():
                 if name.startswith(base_name):
                     first_profile_name = name
-                    found = True
                     break
-            if not found: # Should not happen if logic is correct, but fallback
+            else:
                 first_profile_name = list(default_profiles.keys())[0]
 
         return {
-            "app_version": "0.0.0", # Will be updated on first save
+            "app_version": "0.0.0",
             "language": DEFAULT_LANGUAGE,
             "start_on_boot": DEFAULT_START_ON_BOOT,
-            "window_geometry": None, # Hex string or None
+            "window_geometry": None,
             "active_profile_name": first_profile_name,
             "profiles": default_profiles
         }
 
-    def _is_valid_fan_table(self, table: Any) -> bool:
-        """Validates the structure and values of a fan curve table."""
-        if not isinstance(table, list) or len(table) < MIN_CURVE_POINTS:
-            return False
-        temps = set()
-        last_temp = -1.0
-        last_speed = -1.0
-        for i, item in enumerate(table):
-            if not isinstance(item, list) or len(item) != 2: return False
-            if not all(isinstance(val, (int, float)) for val in item): return False
-            temp, speed = item
-            # Allow slightly higher temp for curve end point flexibility during editing
-            if not (MIN_TEMP_C <= temp <= MAX_TEMP_C + 20): return False
-            if not (MIN_FAN_PERCENT <= speed <= MAX_FAN_PERCENT): return False
-            # Check for monotonicity (temp must increase, speed must not decrease)
-            # Allow duplicate temps ONLY if speed is non-decreasing
-            if temp in temps and speed < last_speed: return False
-            if temp < last_temp: return False
-            if speed < last_speed: return False # Speed must be non-decreasing
-
-            temps.add(temp)
-            last_temp = temp
-            last_speed = speed
-        return True
-
     def _validate_profile_settings(self, settings: Any) -> Optional[ProfileSettings]:
-        """Validates a loaded profile dictionary against defaults."""
+        """Validates a loaded profile dictionary against defaults using helper functions."""
         if not isinstance(settings, dict):
             return None
 
-        validated = self._get_default_profile_settings() # Start with fresh defaults
-        default_keys = validated.keys()
+        validated = self._get_default_profile_settings()
+        
+        for key, default_value in validated.items():
+            loaded_value = settings.get(key)
+            if loaded_value is None:
+                continue
 
-        for key in default_keys:
-            if key in settings:
-                loaded_value = settings[key]
-                default_value = validated[key] # Get default from the fresh copy
-                expected_type = type(default_value)
-
-                # Handle specific complex types first
-                if key in ["cpu_fan_table", "gpu_fan_table"]:
-                    if self._is_valid_fan_table(loaded_value):
-                        # Ensure points are sorted by temperature
-                        validated[key] = sorted([list(p) for p in loaded_value], key=lambda x: x[0])
-                    # else: keep default
-                # Handle simple types and ranges
-                elif isinstance(loaded_value, expected_type):
-                    if key == "fan_mode":
-                        # Allow legacy "manual" value from older configs
-                        if loaded_value == "manual": loaded_value = "fixed"
-                        if loaded_value in ["auto", "fixed"]:
-                            validated[key] = loaded_value
-                        # else: keep default
-                    elif key == "charge_policy":
-                        if loaded_value in ["standard", "custom"]:
-                            validated[key] = loaded_value
-                        # else: keep default
-                    elif isinstance(loaded_value, (int, float)):
-                        # Apply range checks based on key name patterns
-                        if "PERCENT" in key or "SPEED" in key or "THRESHOLD" in key:
-                            min_val, max_val = 0, 100
-                            if key == "charge_threshold":
-                                min_val = MIN_CHARGE_PERCENT # Use specific min if needed
-                            if min_val <= loaded_value <= max_val:
-                                validated[key] = loaded_value
-                        elif "INTERVAL" in key or "DURATION" in key or "TIMEOUT" in key:
-                            if loaded_value > 0: validated[key] = loaded_value
-                        elif "STEP" in key or "SIZE" in key or "RADIUS" in key:
-                            if loaded_value > 0: validated[key] = loaded_value
-                        elif "ALPHA" in key:
-                             if 0.0 <= loaded_value <= 1.0: validated[key] = loaded_value
-                        else: # No specific range check needed for this numeric type
-                            validated[key] = loaded_value
-                    elif isinstance(loaded_value, str):
-                        if "COLOR" in key:
-                            # Basic hex color validation
-                            if loaded_value.startswith('#') and len(loaded_value) in [7, 9]:
-                                try: int(loaded_value[1:], 16); validated[key] = loaded_value
-                                except ValueError: pass # Invalid hex, keep default
-                        else: # No specific validation for this string type
-                            validated[key] = loaded_value
-                    else: # Other types (e.g., bool) - just check type match
-                        validated[key] = loaded_value
-                # else: Type mismatch, keep default value
-            # else: Key missing from loaded settings, keep default value
-
+            if key in ["cpu_fan_table", "gpu_fan_table"]:
+                if _is_valid_fan_table(loaded_value):
+                    validated[key] = sorted([list(p) for p in loaded_value], key=lambda x: x[0])
+            elif key == "fan_mode":
+                validated[key] = _validate_choice(loaded_value, default_value, [FAN_MODE_AUTO, FAN_MODE_FIXED], {"manual": FAN_MODE_FIXED})
+            elif key == "charge_policy":
+                validated[key] = _validate_choice(loaded_value, default_value, [CHARGE_POLICY_STANDARD_STR, CHARGE_POLICY_CUSTOM_STR])
+            elif "PERCENT" in key or "SPEED" in key or "THRESHOLD" in key:
+                min_val = MIN_CHARGE_PERCENT if key == "charge_threshold" else 0
+                validated[key] = _validate_numeric(loaded_value, default_value, min_val, 100)
+            elif "INTERVAL" in key or "DURATION" in key or "TIMEOUT" in key or "STEP" in key or "SIZE" in key or "RADIUS" in key:
+                validated[key] = _validate_numeric(loaded_value, default_value, min_val=0)
+            elif "ALPHA" in key:
+                validated[key] = _validate_numeric(loaded_value, default_value, 0.0, 1.0)
+            elif "COLOR" in key:
+                validated[key] = _validate_color(loaded_value, default_value)
+            elif isinstance(loaded_value, type(default_value)):
+                validated[key] = loaded_value
+        
         return validated
 
-    def load_config(self) -> ConfigDict:
-        """Loads configuration from the file, validates, and applies defaults."""
-        # Ensure translations are loaded so tr() works for default profile names
-        # (This should ideally be done once in main.py before ConfigManager is used)
-        # from .localization import load_translations # Avoid circular import if possible
-        # load_translations() # Call if not guaranteed to be loaded earlier
+    def load_config(self, force_reload: bool = False) -> ConfigDict:
+        """
+        Loads configuration from the file, validates, and applies defaults.
 
+        Args:
+            force_reload: If True, bypasses any cached config and re-reads from disk.
+        """
+        # If not forcing a reload and config is already populated, return the cached version.
+        # The initial load will always proceed as self.config starts as a default structure.
+        if not force_reload and self.config.get("app_version") != "0.0.0":
+            return self.config
+
+        # Ensure translations are loaded so tr() works for default profile names
         default_config = self._get_default_config() # Gets defaults using tr()
 
         try:
@@ -194,6 +188,7 @@ class ConfigManager:
                 return self.config
 
             # Load existing config file
+            print(f"Loading configuration from: {self.filename}")
             with open(self.filename, 'r', encoding='utf-8') as f:
                 loaded_config = json.load(f)
 

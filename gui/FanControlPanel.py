@@ -7,35 +7,24 @@ Contains controls for fan mode (Auto/Manual) and manual fan speed.
 """
 from .qt import (
     QWidget, QHBoxLayout, QLabel, QRadioButton, QButtonGroup,
-    QSlider, QSpacerItem, QSizePolicy, QFrame, Qt, Signal, QTimer, Slot
+    QSlider, QSpacerItem, QSizePolicy, QFrame, Qt, Slot
 )
-
+from .base_control_panel import BaseControlPanel
 from tools.localization import tr
-# from config.settings import DEFAULT_PROFILE_SETTINGS # No longer needed for initial speed
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from viewmodels.fan_control_viewmodel import FanControlViewModel
 
 
-class FanControlPanel(QFrame):
+class FanControlPanel(BaseControlPanel['FanControlViewModel']):
     """
     A QFrame subclass that groups controls related to fan management.
-    Interacts with a FanControlViewModel.
+    Inherits from BaseControlPanel to reduce boilerplate.
     """
-    # Signals emitted by this panel are now minimal, as logic resides in ViewModel.
-    # MainWindow might still listen for high-level signals if panels emit them,
-    # or connect directly to ViewModel signals if VM is passed to MainWindow.
-    # For now, assuming direct interaction with passed ViewModel.
-    transient_status_signal = Signal(str) # For messages like "Applying settings"
-
     def __init__(self, view_model: 'FanControlViewModel', parent: QWidget = None):
-        super().__init__(parent)
+        super().__init__(view_model, parent)
         self.setObjectName("fanControlFrame")
-        self.view_model = view_model
-
-        self._init_ui()
-        self._connect_to_view_model()
 
     def _init_ui(self) -> None:
         layout = QHBoxLayout(self)
@@ -219,64 +208,7 @@ class FanControlPanel(QFrame):
         self.manual_fan_mode_radio.setText(tr("mode_manual"))
         self.manual_fan_speed_label.setText(tr("manual_speed_label"))
         
-        # Update speed value label using current value from slider (or VM) and new unit
-        current_slider_val = self.manual_fan_speed_slider.value()
-        self.manual_fan_speed_value_label.setText(f"{current_slider_val}{tr('percent_unit')}")
+        # Robustly update speed value label from the ViewModel, not by parsing the UI.
+        current_speed = self.view_model.get_current_fixed_speed()
+        self.manual_fan_speed_value_label.setText(f"{current_speed}{tr('percent_unit')}")
 
-
-if __name__ == '__main__':
-    # Example Usage
-    import sys
-    from .qt import QApplication, QMainWindow
-
-    _translations = {
-        "en": {
-            "fan_mode_label": "Fan Mode:", "mode_auto": "Auto", "mode_manual": "Manual",
-            "manual_speed_label": "Manual Speed:", "percent_unit": "%"
-        },
-        # Add a dummy fallback for retranslate_ui test
-        "_fallback": {"percent_unit": "%"}
-    }
-    current_lang = "en"
-    def tr(key, **kwargs):
-        _fallback = kwargs.pop('_fallback', False)
-        if _fallback: # for testing retranslate where previous unit might not be in current lang dict
-            return _translations.get("_fallback", {}).get(key, key).format(**kwargs)
-        return _translations.get(current_lang, {}).get(key, key).format(**kwargs)
-
-
-    app = QApplication(sys.argv)
-    main_win = QMainWindow()
-    panel = FanControlPanel(initial_mode="fixed", initial_speed=50)
-
-    def print_fan_mode(mode):
-        print(f"Fan mode changed to: {mode}")
-        panel.set_fixed_speed(panel.manual_fan_speed_slider.value(), panel.manual_fan_speed_slider.value()) # reflect change
-
-    def print_fixed_speed(speed):
-        print(f"Fixed speed changed to: {speed}%")
-        # In a real app, AppRunner would send back the actual applied speed
-        panel.set_fixed_speed(speed, speed)
-
-
-    panel.fan_mode_changed_signal.connect(print_fan_mode)
-    panel.fixed_speed_changed_signal.connect(print_fixed_speed)
-
-    main_win.setCentralWidget(panel)
-    main_win.show()
-    main_win.resize(500, 100)
-
-    # Test programmatic updates
-    def test_updates():
-        print("Testing programmatic updates...")
-        panel.set_fan_mode("auto")
-        # Simulate status update from AppRunner/ViewModel
-        panel.set_fixed_speed(30, 30) # Slider should update if mode was fixed
-                                      # Label always updates with applied speed
-        QTimer.singleShot(2000, lambda: panel.set_fan_mode("fixed"))
-        QTimer.singleShot(2500, lambda: panel.set_fixed_speed(75, 75)) # Update slider to 75, label to 75%
-
-    QTimer.singleShot(3000, test_updates)
-
-
-    sys.exit(app.exec())

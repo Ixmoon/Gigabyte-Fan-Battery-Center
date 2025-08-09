@@ -6,59 +6,41 @@ ViewModel for CurveControlPanel.
 from gui.qt import QObject, Signal, Slot
 from typing import List, Optional, TYPE_CHECKING
 
-from tools.task_scheduler import is_startup_task_registered # Import directly
-
 if TYPE_CHECKING:
-    from run import AppRunner
-    from tools.config_manager import ProfileSettings # For type hinting curve data
+    from core.app_services import AppServices
+    from tools.config_manager import ProfileSettings
 
 class CurveControlViewModel(QObject):
     """
     Manages state and logic for curve selection, profiles, and startup settings.
+    Interacts with AppServices.
     """
-    # --- Signals to notify CurveControlPanel (View) ---
-    active_curve_type_updated = Signal(str) # 'cpu' or 'gpu'
-    profile_list_updated = Signal(list, str) # List of profile names, active profile name
-    active_profile_updated = Signal(str) # Name of the new active profile
-    start_on_boot_status_updated = Signal(bool) # True if enabled
+    # --- Signals to notify View ---
+    active_curve_type_updated = Signal(str)
+    profile_list_updated = Signal(list, str)
+    active_profile_updated = Signal(str)
+    start_on_boot_status_updated = Signal(bool)
     panel_enabled_updated = Signal(bool)
-    # This signal is for the panel to update a specific button's text after AppRunner confirms rename
-    profile_renamed_locally = Signal(str, str) # old_name, new_name
+    profile_renamed_locally = Signal(str, str)
 
-    # --- Signals to AppRunner ---
+    # --- Signals to request actions (some handled by AppRunner, some by AppServices) ---
     profile_to_activate_signal = Signal(str)
-    profile_to_save_signal = Signal(str) # Emits profile_name, AppRunner gathers settings
-    profile_to_rename_signal = Signal(str, str) # old_name, new_name
+    profile_to_save_signal = Signal(str)
+    profile_to_rename_signal = Signal(str, str)
     start_on_boot_to_apply_signal = Signal(bool)
-    curve_to_reset_signal = Signal() # AppRunner knows active curve from this VM's state
+    curve_to_reset_signal = Signal(str) # Emits 'cpu' or 'gpu'
 
-    def __init__(self, app_runner: 'AppRunner', parent: Optional[QObject] = None):
+    def __init__(self, app_services: 'AppServices', parent: Optional[QObject] = None):
         super().__init__(parent)
-        self._app_runner = app_runner
-        
-        self._active_curve_type: str = "cpu" # Default
+        self.app_services = app_services
+
+        self._active_curve_type: str = "cpu"
         self._profile_names: List[str] = []
         self._active_profile_name: Optional[str] = None
         self._is_start_on_boot_enabled: bool = False
         self._is_panel_enabled: bool = True
 
-        # Initialize from AppRunner/ConfigManager
-        self._load_initial_data()
-
-    def _load_initial_data(self):
-        """Loads initial profile names, active profile, and startup status."""
-        self._profile_names = self._app_runner.config_manager.get_profile_names()
-        self._active_profile_name = self._app_runner.config_manager.get_active_profile_name()
-        self._is_start_on_boot_enabled = is_startup_task_registered() # Direct call for initial state
-        
-        # Emit initial states for the view
-        self.profile_list_updated.emit(self._profile_names, self._active_profile_name or "")
-        if self._active_profile_name:
-             self.active_profile_updated.emit(self._active_profile_name)
-        self.start_on_boot_status_updated.emit(self._is_start_on_boot_enabled)
-        self.active_curve_type_updated.emit(self._active_curve_type)
-
-    # --- Getters for View (used by panel for initial setup) ---
+    # --- Getters for View ---
     @property
     def current_curve_type(self) -> str:
         return self._active_curve_type
@@ -75,130 +57,88 @@ class CurveControlViewModel(QObject):
     def is_start_on_boot_enabled(self) -> bool:
         return self._is_start_on_boot_enabled
 
-    @property
-    def panel_enabled(self) -> bool:
-        return self._is_panel_enabled
-
-    # --- Slots for CurveControlPanel (View) to call ---
+    # --- Slots for View to call ---
     @Slot(str)
     def set_active_curve_type(self, curve_type: str):
         """Called by View when user selects CPU or GPU curve."""
-        if curve_type not in ["cpu", "gpu"]: return
-        if self._active_curve_type != curve_type:
+        if curve_type in ["cpu", "gpu"] and self._active_curve_type != curve_type:
             self._active_curve_type = curve_type
             self.active_curve_type_updated.emit(self._active_curve_type)
-            # AppRunner might listen to this if it needs to do something specific beyond UI update.
-            # For now, CurveCanvas listens via MainWindow.
 
     @Slot(str)
     def activate_profile(self, profile_name: str):
-        """Called by View when user clicks a profile button. Emits signal to AppRunner."""
+        """Called by View. Directly calls the service to activate a profile."""
         if profile_name in self._profile_names and self._active_profile_name != profile_name:
-            self.profile_to_activate_signal.emit(profile_name)
-            # AppRunner will handle logic and then call self.update_active_profile
-            
-    @Slot(str) # profile_name for which to save current settings
-    def request_save_profile(self, profile_name: str):
-        """Called by View to save current UI settings to a specific profile. Emits signal to AppRunner."""
-        self.profile_to_save_signal.emit(profile_name)
-        # AppRunner will gather settings and save, then might update profile list if names changed (unlikely for save).
+            self.app_services.activate_profile(profile_name)
 
-    @Slot(str, str) # old_name, new_name
+    @Slot(str)
+    def request_save_profile(self, profile_name: str):
+        """Called by View to request saving settings to a profile."""
+        self.profile_to_save_signal.emit(profile_name)
+
+    @Slot(str, str)
     def request_rename_profile(self, old_name: str, new_name: str):
-        """Called by View to rename a profile. Emits signal to AppRunner."""
+        """Called by View to request renaming a profile."""
         if old_name in self._profile_names and new_name and old_name != new_name:
-            # Basic client-side validation, AppRunner might do more (e.g. check for actual duplicates in FS)
             self.profile_to_rename_signal.emit(old_name, new_name)
-            # AppRunner will handle logic and then call self.confirm_profile_rename and self.update_profile_list
 
     @Slot(bool)
     def set_start_on_boot(self, enabled: bool):
-        """Called by View when 'Start on Boot' checkbox changes. Emits signal to AppRunner."""
-        if self._is_start_on_boot_enabled != enabled: # Only emit if state actually changes from user input
+        """Called by View to request a change to the 'Start on Boot' setting."""
+        if self._is_start_on_boot_enabled != enabled:
             self.start_on_boot_to_apply_signal.emit(enabled)
-            # AppRunner will handle logic and then call self.update_start_on_boot_status
 
-    @Slot() # No parameter needed, VM knows active curve type
-    def request_reset_active_curve(self):
-        """Called by View to reset the active curve to default. Emits signal to AppRunner."""
-        self.curve_to_reset_signal.emit()
-        # AppRunner will handle logic (using self._active_curve_type) and trigger curve update.
+    @Slot()
+    def reset_active_curve(self):
+        """Called by View to request resetting the currently active curve."""
+        self.curve_to_reset_signal.emit(self._active_curve_type)
 
-    # --- Slots for AppRunner (Model/Controller) to call to update ViewModel state ---
-    @Slot(list, str) # profile_names, active_profile_name
+    @Slot(str, object)
+    def handle_curve_change(self, curve_type: str, data: list):
+        """
+        Called by the View (via MainWindow) when the user modifies a curve.
+        This method forwards the change to the service layer.
+        """
+        self.app_services.set_curve_data(curve_type, data)
+
+    # --- Slots for AppServices/AppRunner to call ---
+    @Slot(list, str)
     def update_profile_list_and_active(self, profile_names: List[str], active_profile_name: str):
-        """Called by AppRunner when the list of profiles or active profile changes."""
-        self._profile_names = profile_names
-        self._active_profile_name = active_profile_name
-        self.profile_list_updated.emit(self._profile_names, self._active_profile_name or "")
-        if self._active_profile_name: # Ensure active_profile_updated is also emitted
-            self.active_profile_updated.emit(self._active_profile_name)
+        """Called by services to update the entire profile list and active profile."""
+        list_changed = self._profile_names != profile_names
+        active_changed = self._active_profile_name != active_profile_name
 
-
-    @Slot(str) # Only updates active profile name, assumes list is current
-    def update_active_profile(self, active_profile_name: str):
-        """Called by AppRunner when only the active profile name changes."""
-        if self._active_profile_name != active_profile_name:
+        if list_changed:
+            self._profile_names = profile_names
+        if active_changed:
             self._active_profile_name = active_profile_name
-            self.active_profile_updated.emit(self._active_profile_name)
 
-    @Slot(str, str)
-    def confirm_profile_rename(self, old_name: str, new_name: str):
-        """Called by AppRunner after successfully renaming a profile in ConfigManager."""
-        # Update internal list if AppRunner doesn't send a full new list immediately
-        try:
-            idx = self._profile_names.index(old_name)
-            self._profile_names[idx] = new_name
-        except ValueError:
-            pass # Should not happen if AppRunner sends full list via update_profile_list_and_active
+        if list_changed or active_changed:
+            self.profile_list_updated.emit(self._profile_names, self._active_profile_name or "")
         
-        if self._active_profile_name == old_name:
-            self._active_profile_name = new_name
-        
-        self.profile_renamed_locally.emit(old_name, new_name) # For panel to update button text
-        # AppRunner should also call update_profile_list_and_active to refresh the whole list in UI.
+        if active_changed and self._active_profile_name:
+            self.active_profile_updated.emit(self._active_profile_name)
 
     @Slot(bool)
     def update_start_on_boot_status(self, enabled: bool):
-        """Called by AppRunner with the current startup task registration status."""
+        """Called by services with the current startup task registration status."""
         if self._is_start_on_boot_enabled != enabled:
             self._is_start_on_boot_enabled = enabled
             self.start_on_boot_status_updated.emit(self._is_start_on_boot_enabled)
-            
+
     @Slot(bool)
-    def set_panel_enabled(self, enabled: bool): # Renamed for consistency
-        """Called by AppRunner/MainWindow to globally enable/disable controls."""
+    def set_panel_enabled(self, enabled: bool):
+        """Called to globally enable/disable controls."""
         if self._is_panel_enabled != enabled:
             self._is_panel_enabled = enabled
             self.panel_enabled_updated.emit(self._is_panel_enabled)
 
+    @Slot(dict)
     def apply_profile_settings(self, settings: 'ProfileSettings'):
         """
-        Applies curve/profile related settings from a profile.
-        Primarily, this means ensuring the active curve type display is correct if
-        the profile specifies a preferred one (though not standard).
-        The actual profile activation and curve data loading is handled by AppRunner
-        and directly by CurveCanvas. This ViewModel mainly reflects the *name* of the
-        active profile and the list of available profiles.
+        This ViewModel doesn't hold profile-specific data itself, but it reflects
+        the *name* of the active profile. This is handled by `update_profile_list_and_active`.
         """
-        # Example: if profile has a "default_active_curve_type"
-        # new_curve_type = settings.get("default_active_curve_type", self._active_curve_type)
-        # if self._active_curve_type != new_curve_type:
-        #     self._active_curve_type = new_curve_type
-        #     self.active_curve_type_changed.emit(self._active_curve_type)
-        pass # Most profile data is handled by AppRunner causing updates to specific parts.
+        pass
 
-    def get_current_settings_for_profile(self) -> dict:
-        """
-        Returns settings managed by this ViewModel for saving.
-        Currently, this ViewModel doesn't directly manage data points that are saved
-        into a profile (like curve points or specific profile names).
-        It reflects the *existence* and *selection* of profiles.
-        The actual curve data is fetched from CurveCanvas by MainWindow/AppRunner.
-        'start_on_boot' is a global setting, not per-profile.
-        """
-        # This ViewModel primarily manages UI state related to profile selection,
-        # not the content of the profiles themselves.
-        return {
-            # "active_curve_type": self._active_curve_type # If this were a per-profile setting
-        }
+    # get_current_settings_for_profile removed. AppServices is now the source of truth.

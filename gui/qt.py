@@ -21,16 +21,25 @@ from PySide6.QtCore import (
     Signal,
     Slot,
     QSize,
-    QPoint
+    QPoint,
+    QRectF,
+    QPointF
 )
 from PySide6.QtGui import (
     QIcon,
     QAction,
+    QPainter,
+    QColor,
+    QPen,
+    QBrush,
+    QFont,
+    QPolygonF,
     QCloseEvent,
     QShowEvent,
     QHideEvent,
     QMouseEvent,
-    QResizeEvent
+    QResizeEvent,
+    QPixmap
 )
 from PySide6.QtWidgets import (
     QApplication,
