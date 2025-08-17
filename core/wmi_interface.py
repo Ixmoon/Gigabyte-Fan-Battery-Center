@@ -31,18 +31,18 @@ from config.settings import (
     WMI_NAMESPACE, DEFAULT_WMI_GET_CLASS, DEFAULT_WMI_SET_CLASS,
     WMI_GET_CPU_TEMP, WMI_GET_GPU_TEMP1, WMI_GET_GPU_TEMP2,
     WMI_GET_RPM1, WMI_GET_RPM2, WMI_GET_CHARGE_POLICY, WMI_GET_CHARGE_STOP,
-    WMI_SET_FIXED_FAN_STATUS, WMI_SET_SUPER_QUIET, WMI_SET_AUTO_FAN_STATUS,
-    WMI_SET_STEP_FAN_STATUS, WMI_SET_FIXED_FAN_SPEED, WMI_SET_GPU_FAN_DUTY,
+    WMI_SET_CUSTOM_FAN_STATUS, WMI_SET_SUPER_QUIET, WMI_SET_AUTO_FAN_STATUS,
+    WMI_SET_STEP_FAN_STATUS, WMI_SET_CUSTOM_FAN_SPEED, WMI_SET_GPU_FAN_DUTY,
     WMI_SET_CHARGE_POLICY, WMI_SET_CHARGE_STOP,
     WMI_WORKER_STOP_SIGNAL, WMI_REQUEST_TIMEOUT_S,
     TEMP_READ_ERROR_VALUE, RPM_READ_ERROR_VALUE,
     CHARGE_POLICY_READ_ERROR_VALUE, CHARGE_THRESHOLD_READ_ERROR_VALUE,
-    CHARGE_POLICY_STANDARD, CHARGE_POLICY_CUSTOM, MIN_CHARGE_PERCENT, MAX_CHARGE_PERCENT,
+    MIN_CHARGE_PERCENT, MAX_CHARGE_PERCENT,
     # --- NEW: Import action constants ---
     WMI_ACTION_GET_CPU_TEMP, WMI_ACTION_GET_GPU_TEMP, WMI_ACTION_GET_RPM,
     WMI_ACTION_GET_CHARGE_POLICY, WMI_ACTION_GET_CHARGE_STOP,
-    WMI_ACTION_CONFIGURE_MANUAL_FAN, WMI_ACTION_SET_FAN_SPEED_RAW,
-    WMI_ACTION_SET_CHARGE_POLICY, WMI_ACTION_SET_CHARGE_STOP
+    WMI_ACTION_CONFIGURE_CUSTOM_FAN, WMI_ACTION_CONFIGURE_BIOS_FAN,
+    WMI_ACTION_SET_FAN_SPEED_RAW, WMI_ACTION_SET_CHARGE_POLICY, WMI_ACTION_SET_CHARGE_STOP
 )
 
 # --- Type Hinting ---
@@ -100,7 +100,8 @@ class WMIWorker(threading.Thread):
             WMI_ACTION_GET_RPM: self._handle_get_rpm,
             WMI_ACTION_GET_CHARGE_POLICY: self._handle_get_charge_policy,
             WMI_ACTION_GET_CHARGE_STOP: self._handle_get_charge_stop,
-            WMI_ACTION_CONFIGURE_MANUAL_FAN: self._handle_configure_manual_fan,
+            WMI_ACTION_CONFIGURE_CUSTOM_FAN: self._handle_configure_custom_fan,
+            WMI_ACTION_CONFIGURE_BIOS_FAN: self._handle_configure_bios_fan,
             WMI_ACTION_SET_FAN_SPEED_RAW: self._handle_set_fan_speed_raw,
             WMI_ACTION_SET_CHARGE_POLICY: self._handle_set_charge_policy,
             WMI_ACTION_SET_CHARGE_STOP: self._handle_set_charge_stop,
@@ -281,16 +282,22 @@ class WMIWorker(threading.Thread):
         raw_res = self._execute_wmi_method(self._wmi_get_obj, WMI_GET_CHARGE_STOP)
         return self._validate_int(self._parse_wmi_result(raw_res), CHARGE_THRESHOLD_READ_ERROR_VALUE)
 
-    def _handle_configure_manual_fan(self, params: Dict) -> bool:
-        self._execute_wmi_method(self._wmi_set_obj, WMI_SET_FIXED_FAN_STATUS, Data=1.0)
+    def _handle_configure_custom_fan(self, params: Dict) -> bool:
+        self._execute_wmi_method(self._wmi_set_obj, WMI_SET_CUSTOM_FAN_STATUS, Data=1.0)
         self._execute_wmi_method(self._wmi_set_obj, WMI_SET_SUPER_QUIET, Data=0.0)
         self._execute_wmi_method(self._wmi_set_obj, WMI_SET_AUTO_FAN_STATUS, Data=0.0)
         self._execute_wmi_method(self._wmi_set_obj, WMI_SET_STEP_FAN_STATUS, Data=0.0)
         return True
 
+    def _handle_configure_bios_fan(self, params: Dict) -> bool:
+        self._execute_wmi_method(self._wmi_set_obj, WMI_SET_AUTO_FAN_STATUS, Data=1.0)
+        self._execute_wmi_method(self._wmi_set_obj, WMI_SET_CUSTOM_FAN_STATUS, Data=0.0)
+        # We might not need to touch other flags like SUPER_QUIET here
+        return True
+
     def _handle_set_fan_speed_raw(self, params: Dict) -> bool:
         speed_value = params["speed_value"]
-        self._execute_wmi_method(self._wmi_set_obj, WMI_SET_FIXED_FAN_SPEED, Data=speed_value)
+        self._execute_wmi_method(self._wmi_set_obj, WMI_SET_CUSTOM_FAN_SPEED, Data=speed_value)
         self._execute_wmi_method(self._wmi_set_obj, WMI_SET_GPU_FAN_DUTY, Data=speed_value)
         return True
 
@@ -463,12 +470,20 @@ class WMIInterface:
         except WMIError:
             return CHARGE_THRESHOLD_READ_ERROR_VALUE
 
-    def configure_manual_fan_control(self) -> bool:
-        """Sets the necessary WMI flags to enable manual/fixed fan speed control."""
+    def configure_custom_fan_control(self) -> bool:
+        """Sets the necessary WMI flags to enable custom (app-controlled) fan speed."""
         try:
-            return self._execute_sync(WMI_ACTION_CONFIGURE_MANUAL_FAN)
+            return self._execute_sync(WMI_ACTION_CONFIGURE_CUSTOM_FAN)
         except WMIError as e:
-            print(f"WMI Error (configure_manual_fan): {e}", file=sys.stderr)
+            print(f"WMI Error (configure_custom_fan): {e}", file=sys.stderr)
+            return False
+
+    def configure_bios_fan_control(self) -> bool:
+        """Sets the necessary WMI flags to return fan control to the BIOS/EC."""
+        try:
+            return self._execute_sync(WMI_ACTION_CONFIGURE_BIOS_FAN)
+        except WMIError as e:
+            print(f"WMI Error (configure_bios_fan): {e}", file=sys.stderr)
             return False
 
     def set_fan_speed_raw(self, raw_speed_value: float) -> bool:

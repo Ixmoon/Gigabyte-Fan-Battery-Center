@@ -7,7 +7,7 @@
         "Config 1": {
             "cpu_fan_table": [
                 [
-                    56,
+                    53,
                     0
                 ],
                 [
@@ -68,7 +68,7 @@
             "fan_mode": "auto",
             "fixed_fan_speed": 30,
             "battery_charge_policy": "custom",
-            "battery_charge_threshold": 80,
+            "battery_charge_threshold": 97,
             "fan_adjustment_interval_s": 1.5,
             "fan_hysteresis_percent": 5,
             "min_adjustment_step": 1,

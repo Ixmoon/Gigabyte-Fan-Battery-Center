@@ -15,9 +15,10 @@ from config.settings import DEFAULT_PROFILE_SETTINGS
 # State Constants
 # ==============================================================================
 
+FAN_MODE_BIOS = "bios"
 FAN_MODE_AUTO = "auto"
-FAN_MODE_FIXED = "fixed"
-CHARGE_POLICY_STANDARD = "standard"
+FAN_MODE_CUSTOM = "custom"
+CHARGE_POLICY_BIOS = "bios"
 CHARGE_POLICY_CUSTOM = "custom"
 
 
@@ -36,7 +37,7 @@ class ProfileState:
     cpu_fan_table: List[List[int]] = field(default_factory=lambda: DEFAULT_PROFILE_SETTINGS['CPU_FAN_TABLE'])
     gpu_fan_table: List[List[int]] = field(default_factory=lambda: DEFAULT_PROFILE_SETTINGS['GPU_FAN_TABLE'])
     fan_mode: str = field(default=DEFAULT_PROFILE_SETTINGS['FAN_MODE'])
-    fixed_fan_speed: int = field(default=DEFAULT_PROFILE_SETTINGS['FIXED_FAN_SPEED'])
+    custom_fan_speed: int = field(default=DEFAULT_PROFILE_SETTINGS['CUSTOM_FAN_SPEED'])
     battery_charge_policy: str = field(default=DEFAULT_PROFILE_SETTINGS['BATTERY_CHARGE_POLICY'])
     battery_charge_threshold: int = field(default=DEFAULT_PROFILE_SETTINGS['BATTERY_CHARGE_THRESHOLD'])
     fan_adjustment_interval_s: float = field(default=DEFAULT_PROFILE_SETTINGS['FAN_ADJUSTMENT_INTERVAL_S'])
@@ -87,7 +88,8 @@ class AppState:
     gpu_fan_rpm: int = 0
     applied_fan_mode: str = FAN_MODE_AUTO
     applied_fan_speed_percent: int = 0
-    applied_charge_policy: str = CHARGE_POLICY_STANDARD
+    auto_fan_target_speed_percent: int = 0 # Target speed calculated by the auto controller
+    applied_charge_policy: str = CHARGE_POLICY_BIOS
     applied_charge_threshold: int = 100
     is_panel_enabled: bool = True
     active_curve_type: str = "cpu" # 'cpu' or 'gpu'

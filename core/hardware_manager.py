@@ -5,7 +5,7 @@ from typing import Optional, Dict, Any
 from .wmi_interface import WMIInterface
 from config.settings import (
     MIN_FAN_PERCENT, MAX_FAN_PERCENT, INIT_APPLIED_PERCENTAGE,
-    FAN_MODE_AUTO, FAN_MODE_FIXED, FAN_MODE_UNKNOWN
+    FAN_MODE_BIOS, FAN_MODE_AUTO, FAN_MODE_CUSTOM, FAN_MODE_UNKNOWN
 )
 
 # --- Fan Control Constants ---
@@ -15,7 +15,7 @@ MIN_EFFECTIVE_FAN_PERCENT_MANUAL = 10
 # Conversion map from abstract policy names to hardware-specific integer codes.
 # This logic is now properly encapsulated and hidden from the rest of the application.
 BATTERY_POLICY_CODES: Dict[str, int] = {
-    "standard": 0,
+    "bios": 0,
     "custom": 4,
 }
 # Create a reverse map for converting integer codes back to string names.
@@ -42,7 +42,7 @@ class BatteryManager:
         Sets the battery charge policy.
 
         Args:
-            policy_name: The desired policy, e.g., "standard" or "custom".
+            policy_name: The desired policy, e.g., "bios" or "custom".
 
         Returns:
             True if the policy was set successfully, False otherwise.
@@ -71,7 +71,7 @@ class BatteryManager:
         into an application-friendly format.
 
         Returns:
-            A dictionary with status information (e.g., 'charge_policy': "standard",
+            A dictionary with status information (e.g., 'charge_policy': "bios",
             'charge_threshold': 80) or None if the query fails.
         """
         try:
@@ -104,7 +104,7 @@ class FanManager:
 
     @property
     def current_mode(self) -> str:
-        """Returns the last requested fan mode ('auto' or 'fixed')."""
+        """Returns the last requested fan mode ('bios', 'auto', or 'custom')."""
         return self._current_mode
 
     @property
@@ -118,34 +118,34 @@ class FanManager:
         raw_value = math.ceil((percent / 100.0) * 229.0)
         return float(raw_value)
 
-    def _get_effective_manual_percentage(self, requested_percentage: int) -> int:
-        """Applies the minimum threshold rule (below 10% becomes 0%) for manual mode."""
+    def _get_effective_custom_percentage(self, requested_percentage: int) -> int:
+        """Applies the minimum threshold rule (below 10% becomes 0%) for custom mode."""
         requested_percentage = max(MIN_FAN_PERCENT, min(MAX_FAN_PERCENT, requested_percentage))
         if 0 < requested_percentage < MIN_EFFECTIVE_FAN_PERCENT_MANUAL:
             return 0
         else:
             return requested_percentage
 
-    def set_mode_fixed(self, percentage: int) -> bool:
+    def set_mode_custom(self, percentage: int) -> bool:
         """
-        Sets the fan mode to fixed and applies the specified speed percentage.
-        Speeds below 10% (but > 0) are treated as 0% for manual setting.
+        Sets the fan mode to custom (custom speed) and applies the specified speed percentage.
+        Speeds below 10% (but > 0) are treated as 0% for custom setting.
         """
-        effective_percentage = self._get_effective_manual_percentage(percentage)
+        effective_percentage = self._get_effective_custom_percentage(percentage)
         raw_speed = self._percent_to_raw(effective_percentage)
 
-        if not self.wmi.configure_manual_fan_control():
-            print("Error: Failed to configure WMI for manual fan control.", file=sys.stderr)
+        if not self.wmi.configure_custom_fan_control():
+            print("Error: Failed to configure WMI for custom fan control.", file=sys.stderr)
             self._current_mode = FAN_MODE_UNKNOWN
             self._applied_percentage = INIT_APPLIED_PERCENTAGE
             return False
 
         if self.wmi.set_fan_speed_raw(raw_speed):
-            self._current_mode = FAN_MODE_FIXED
+            self._current_mode = FAN_MODE_CUSTOM
             self._applied_percentage = effective_percentage
             return True
         else:
-            print(f"Error: Failed to set fixed fan speed to {percentage}% (Effective: {effective_percentage}%, Raw: {raw_speed}).", file=sys.stderr)
+            print(f"Error: Failed to set custom fan speed to {percentage}% (Effective: {effective_percentage}%, Raw: {raw_speed}).", file=sys.stderr)
             self._current_mode = FAN_MODE_UNKNOWN
             self._applied_percentage = INIT_APPLIED_PERCENTAGE
             return False
@@ -155,12 +155,26 @@ class FanManager:
         Sets the fan mode to 'auto' for application-driven control.
         This ensures WMI is ready for the application to send speed commands.
         """
-        if self.wmi.configure_manual_fan_control():
+        if self.wmi.configure_custom_fan_control():
             self._current_mode = FAN_MODE_AUTO
             self._applied_percentage = INIT_APPLIED_PERCENTAGE
             return True
         else:
             print("Error: Failed to configure WMI for app-controlled auto mode.", file=sys.stderr)
+            self._current_mode = FAN_MODE_UNKNOWN
+            self._applied_percentage = INIT_APPLIED_PERCENTAGE
+            return False
+
+    def set_mode_bios(self) -> bool:
+        """
+        Sets the fan mode to 'bios', returning control to the hardware.
+        """
+        if self.wmi.configure_bios_fan_control():
+            self._current_mode = FAN_MODE_BIOS
+            self._applied_percentage = INIT_APPLIED_PERCENTAGE # No speed applied by us
+            return True
+        else:
+            print("Error: Failed to configure WMI for bios/hardware fan mode.", file=sys.stderr)
             self._current_mode = FAN_MODE_UNKNOWN
             self._applied_percentage = INIT_APPLIED_PERCENTAGE
             return False

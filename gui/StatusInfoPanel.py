@@ -13,7 +13,8 @@ from .qt import QWidget, QGridLayout, QLabel, QFrame
 from tools.localization import tr
 from config.settings import (
     TEMP_READ_ERROR_VALUE, RPM_READ_ERROR_VALUE,
-    FAN_MODE_AUTO, CHARGE_POLICY_STANDARD, CHARGE_POLICY_CUSTOM
+    FAN_MODE_AUTO, FAN_MODE_CUSTOM, FAN_MODE_BIOS,
+    CHARGE_POLICY_CUSTOM, CHARGE_POLICY_BIOS
 )
 
 if TYPE_CHECKING:
@@ -119,9 +120,15 @@ class StatusInfoPanel(QFrame):
         fan_mode = profile.fan_mode
         
         if fan_mode == FAN_MODE_AUTO:
-            fan_display_text = str(tr('mode_auto'))
-        else:  # Fixed mode
-            fan_display_text = f"{profile.fixed_fan_speed}{tr('percent_unit')}"
+            applied = state.applied_fan_speed_percent
+            target = state.auto_fan_target_speed_percent
+            fan_display_text = tr("fan_display_auto_format", applied=applied, target=target)
+        elif fan_mode == FAN_MODE_CUSTOM:
+            fan_display_text = f"{profile.custom_fan_speed}{tr('percent_unit')}"
+        elif fan_mode == FAN_MODE_BIOS:
+            fan_display_text = str(tr('mode_bios'))
+        else:
+            fan_display_text = str(tr('unknown_mode'))
         self.applied_target_value.setText(str(fan_display_text))
 
         # Battery Info Display from Profile
@@ -129,8 +136,8 @@ class StatusInfoPanel(QFrame):
         charge_threshold = profile.battery_charge_threshold
 
         policy_str = tr("policy_error")
-        if charge_policy == CHARGE_POLICY_STANDARD:
-            policy_str = tr("mode_standard")
+        if charge_policy == CHARGE_POLICY_BIOS:
+            policy_str = tr("mode_bios")
         elif charge_policy == CHARGE_POLICY_CUSTOM:
             policy_str = tr("mode_custom")
         
@@ -187,7 +194,7 @@ if __name__ == '__main__':
             "status_label": "Status:", "initializing": "Initializing...",
             "celsius_unit": "°C", "rpm_unit": " RPM", "percent_unit": "%",
             "temp_error": "Error", "rpm_error": "Error", "policy_error": "Error",
-            "threshold_error": "Error", "mode_auto": "Auto", "mode_standard": "Standard",
+            "threshold_error": "Error", "mode_auto": "Auto", "mode_bios": "BIOS",
             "mode_custom": "Custom", "unknown_mode": "Unknown", "unknown_state": "Unknown State",
             "wmi_error": "WMI Error"
         }

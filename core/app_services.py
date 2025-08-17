@@ -9,6 +9,7 @@ unified, high-level API for the rest of the application to interact with.
 import os
 import sys
 import copy
+import time
 from typing import Optional, List, Dict, Any, Callable
 from functools import wraps
 
@@ -18,7 +19,7 @@ from gui.qt import QObject, Signal, Slot, QTimer
 from .wmi_interface import WMIInterface, WMIError
 from .hardware_manager import BatteryManager, FanManager
 from .auto_temp_controller import AutoTemperatureController
-from .state import AppState, ProfileState, FAN_MODE_AUTO, FAN_MODE_FIXED
+from .state import AppState, ProfileState, FAN_MODE_BIOS, FAN_MODE_AUTO, FAN_MODE_CUSTOM, CHARGE_POLICY_BIOS
 from tools.localization import tr
 from tools.task_scheduler import create_startup_task, delete_startup_task, is_startup_task_registered
 
@@ -123,9 +124,14 @@ class AppServices(QObject):
 
         if mode == FAN_MODE_AUTO:
             self.fan_manager.set_mode_auto()
+            time.sleep(0.5)
             self.auto_temp_controller.start_auto_mode()
-        elif mode == FAN_MODE_FIXED:
-            self.fan_manager.set_mode_fixed(active_profile.fixed_fan_speed)
+        elif mode == FAN_MODE_CUSTOM:
+            self.fan_manager.set_mode_custom(active_profile.custom_fan_speed)
+            time.sleep(0.5)
+        elif mode == FAN_MODE_BIOS:
+            self.fan_manager.set_mode_bios()
+            time.sleep(0.5)
         else:
             return False
 
@@ -134,14 +140,14 @@ class AppServices(QObject):
         return True
 
     @_handle_wmi_errors
-    def set_fixed_fan_speed(self, speed: int) -> bool:
-        """High-level function to set a fixed fan speed."""
+    def set_custom_fan_speed(self, speed: int) -> bool:
+        """High-level function to set a custom fan speed."""
         active_profile = self._get_active_profile()
-        if not active_profile or active_profile.fan_mode != FAN_MODE_FIXED:
+        if not active_profile or active_profile.fan_mode != FAN_MODE_CUSTOM:
             return True
 
-        if self.fan_manager.set_mode_fixed(speed):
-            active_profile.fixed_fan_speed = speed
+        if self.fan_manager.set_mode_custom(speed):
+            active_profile.custom_fan_speed = speed
             self._commit_state_change(save_config=True)
             return True
         return False
@@ -151,12 +157,26 @@ class AppServices(QObject):
         """Sets the battery charge policy using the hardware manager."""
         active_profile = self._get_active_profile()
         if not active_profile: return False
-
         if self.battery_manager.set_policy(policy_name):
-            active_profile.battery_charge_policy = policy_name
-            # If setting a custom policy, immediately apply its threshold as well.
-            if policy_name == "custom":
-                self.set_battery_charge_threshold(active_profile.battery_charge_threshold)
+            # After setting the policy, wait briefly for it to take effect on the hardware.
+            time.sleep(0.5)  # 500ms delay
+
+            # Now, re-read the hardware status to get the actual applied threshold.
+            new_status = self.battery_manager.get_status()
+
+            if new_status:
+                active_profile.battery_charge_policy = new_status.get('charge_policy', policy_name)
+                active_profile.battery_charge_threshold = new_status.get('charge_threshold', 100)
+            else:
+                # Fallback in case status read fails
+                active_profile.battery_charge_policy = policy_name
+
+            # If the policy is now custom, ensure the hardware is set to the profile's threshold.
+            # This is important for the case where the user switches from bios back to a
+            # previously configured custom value.
+            if active_profile.battery_charge_policy == "custom":
+                self.battery_manager.set_charge_threshold(active_profile.battery_charge_threshold)
+
             self._commit_state_change(save_config=True)
             return True
         else:
@@ -320,6 +340,7 @@ class AppServices(QObject):
         
         self.state.applied_fan_mode = self.fan_manager.current_mode
         self.state.applied_fan_speed_percent = self.fan_manager.applied_percentage
+        self.state.auto_fan_target_speed_percent = self.auto_temp_controller.get_last_theoretical_target()
 
         self._commit_state_change(save_config=False)
 

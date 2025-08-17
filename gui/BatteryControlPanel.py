@@ -12,7 +12,7 @@ from .qt import (
 from typing import TYPE_CHECKING, Optional
 
 from tools.localization import tr
-from core.state import AppState, CHARGE_POLICY_STANDARD, CHARGE_POLICY_CUSTOM
+from core.state import AppState, CHARGE_POLICY_BIOS, CHARGE_POLICY_CUSTOM
 
 
 if TYPE_CHECKING:
@@ -43,13 +43,13 @@ class BatteryControlPanel(QFrame):
         layout.setSpacing(10)
 
         self.charge_policy_label = QLabel(tr("charge_policy_label"))
-        self.standard_charge_radio = QRadioButton(tr("mode_standard"))
-        self.standard_charge_radio.setToolTip(tr("policy_standard_tooltip"))
+        self.bios_charge_radio = QRadioButton(tr("mode_bios"))
+        self.bios_charge_radio.setToolTip(tr("policy_bios_tooltip"))
         self.custom_charge_radio = QRadioButton(tr("mode_custom"))
         self.custom_charge_radio.setToolTip(tr("policy_custom_tooltip"))
 
         self.charge_policy_button_group = QButtonGroup(self)
-        self.charge_policy_button_group.addButton(self.standard_charge_radio) # No explicit ID needed if using object
+        self.charge_policy_button_group.addButton(self.bios_charge_radio)
         self.charge_policy_button_group.addButton(self.custom_charge_radio)
 
         self.charge_threshold_label = QLabel(tr("charge_threshold_label"))
@@ -67,7 +67,7 @@ class BatteryControlPanel(QFrame):
 
         # Signal connections are handled in _connect_signals
         layout.addWidget(self.charge_policy_label)
-        layout.addWidget(self.standard_charge_radio)
+        layout.addWidget(self.bios_charge_radio)
         layout.addWidget(self.custom_charge_radio)
         layout.addSpacerItem(QSpacerItem(20, 10, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
         layout.addWidget(self.charge_threshold_label)
@@ -95,7 +95,7 @@ class BatteryControlPanel(QFrame):
         if is_custom_mode:
             self.custom_charge_radio.setChecked(True)
         else:
-            self.standard_charge_radio.setChecked(True)
+            self.bios_charge_radio.setChecked(True)
 
         # Update Threshold Slider and Label
         self.charge_threshold_slider.setValue(profile.battery_charge_threshold)
@@ -104,7 +104,7 @@ class BatteryControlPanel(QFrame):
 
         # Update Enabled/Disabled State
         panel_enabled = state.is_panel_enabled
-        self.standard_charge_radio.setEnabled(panel_enabled)
+        self.bios_charge_radio.setEnabled(panel_enabled)
         self.custom_charge_radio.setEnabled(panel_enabled)
         
         controls_enabled = panel_enabled and is_custom_mode
@@ -119,7 +119,7 @@ class BatteryControlPanel(QFrame):
     def _handle_policy_radio_toggled(self, button: QRadioButton, checked: bool) -> None:
         """Handles user interaction with the charge policy radio buttons."""
         if checked:
-            new_policy = CHARGE_POLICY_CUSTOM if button == self.custom_charge_radio else CHARGE_POLICY_STANDARD
+            new_policy = CHARGE_POLICY_CUSTOM if button == self.custom_charge_radio else CHARGE_POLICY_BIOS
             self.app_services.set_battery_charge_policy(new_policy)
 
     def _handle_slider_released(self) -> None:
@@ -134,8 +134,8 @@ class BatteryControlPanel(QFrame):
     def retranslate_ui(self) -> None:
         """Retranslates all user-visible text in the panel."""
         self.charge_policy_label.setText(tr("charge_policy_label"))
-        self.standard_charge_radio.setText(tr("mode_standard"))
-        self.standard_charge_radio.setToolTip(tr("policy_standard_tooltip"))
+        self.bios_charge_radio.setText(tr("mode_bios"))
+        self.bios_charge_radio.setToolTip(tr("policy_bios_tooltip"))
         self.custom_charge_radio.setText(tr("mode_custom"))
         self.custom_charge_radio.setToolTip(tr("policy_custom_tooltip"))
         self.charge_threshold_label.setText(tr("charge_threshold_label"))

@@ -3,7 +3,7 @@
 """
 Global constants and default settings for the Fan & Battery Control application.
 """
-from typing import List, Dict
+from typing import List, Dict, Any
 
 # ==============================================================================
 # Application Info
@@ -31,10 +31,11 @@ DEFAULT_START_ON_BOOT: bool = False
 DEFAULT_START_MINIMIZED: bool = False # Default for when launched via auto-start task
 
 # --- Core State Constants ---
-FAN_MODE_AUTO = "auto"
-FAN_MODE_FIXED = "fixed"
+FAN_MODE_BIOS = "bios"
+FAN_MODE_AUTO = "auto" # Software-controlled curve
+FAN_MODE_CUSTOM = "custom" # Software-controlled custom speed
 FAN_MODE_UNKNOWN = "unknown"
-CHARGE_POLICY_STANDARD = "standard"
+CHARGE_POLICY_BIOS = "bios"
 CHARGE_POLICY_CUSTOM = "custom"
 FAN_MODE_AUTO_EQUIVALENT_SPEED = 0 # The speed that effectively enables EC/BIOS auto control
 
@@ -43,8 +44,8 @@ FAN_MODE_AUTO_EQUIVALENT_SPEED = 0 # The speed that effectively enables EC/BIOS 
 DEFAULT_CPU_FAN_TABLE: List[List[int]] = [[50, 0], [60, 15], [70, 25], [80, 40], [85, 60], [90, 80], [95, 100]]
 DEFAULT_GPU_FAN_TABLE: List[List[int]] = [[40, 0], [55, 15], [65, 25], [70, 40], [75, 60], [80, 80], [85, 100]]
 DEFAULT_FAN_MODE: str = FAN_MODE_AUTO
-DEFAULT_FIXED_FAN_SPEED: int = 30 # Percentage
-DEFAULT_CHARGE_POLICY: str = CHARGE_POLICY_CUSTOM
+DEFAULT_CUSTOM_FAN_SPEED: int = 30 # Percentage
+DEFAULT_CHARGE_POLICY: str = CHARGE_POLICY_BIOS
 DEFAULT_CHARGE_THRESHOLD: int = 80 # Percentage
 
 # --- Default Control Logic & Timing (per profile) ---
@@ -72,11 +73,11 @@ DEFAULT_ALPHA_ACTIVE: float = 1.0
 DEFAULT_ALPHA_INACTIVE: float = 0.4
 
 # --- Combine all default profile settings into one dictionary ---
-DEFAULT_PROFILE_SETTINGS: Dict[str, any] = {
+DEFAULT_PROFILE_SETTINGS: Dict[str, Any] = {
     "CPU_FAN_TABLE": [list(p) for p in DEFAULT_CPU_FAN_TABLE],
     "GPU_FAN_TABLE": [list(p) for p in DEFAULT_GPU_FAN_TABLE],
     "FAN_MODE": DEFAULT_FAN_MODE,
-    "FIXED_FAN_SPEED": DEFAULT_FIXED_FAN_SPEED,
+    "CUSTOM_FAN_SPEED": DEFAULT_CUSTOM_FAN_SPEED,
     "BATTERY_CHARGE_POLICY": DEFAULT_CHARGE_POLICY,
     "BATTERY_CHARGE_THRESHOLD": DEFAULT_CHARGE_THRESHOLD,
     "AUTO_MODE_CYCLE_DURATION_S": DEFAULT_AUTO_MODE_CYCLE_DURATION_S,
@@ -118,11 +119,11 @@ WMI_GET_RPM2: str = "getRpm2" # Fan 2 (often GPU/System)
 WMI_GET_CHARGE_POLICY: str = "GetChargePolicy"
 WMI_GET_CHARGE_STOP: str = "GetChargeStop"
 # Setters
-WMI_SET_FIXED_FAN_STATUS: str = "SetFixedFanStatus" # Enable fixed fan mode (Data=1.0)
+WMI_SET_CUSTOM_FAN_STATUS: str = "SetFixedFanStatus" # Enable custom fan mode (Data=1.0)
 WMI_SET_SUPER_QUIET: str = "SetSuperQuiet" # Disable super quiet mode (Data=0.0)
 WMI_SET_AUTO_FAN_STATUS: str = "SetAutoFanStatus" # Disable auto fan mode (Data=0.0)
 WMI_SET_STEP_FAN_STATUS: str = "SetStepFanStatus" # Disable step fan mode (Data=0.0)
-WMI_SET_FIXED_FAN_SPEED: str = "SetFixedFanSpeed" # Set Fan 1 speed (Data=raw_value)
+WMI_SET_CUSTOM_FAN_SPEED: str = "SetFixedFanSpeed" # Set Fan 1 speed (Data=raw_value)
 WMI_SET_GPU_FAN_DUTY: str = "SetGPUFanDuty" # Set Fan 2 speed (Data=raw_value)
 WMI_SET_CHARGE_POLICY: str = "SetChargePolicy" # Set policy (Data=policy_code)
 WMI_SET_CHARGE_STOP: str = "SetChargeStop" # Set threshold (Data=percentage)
@@ -137,7 +138,8 @@ WMI_ACTION_GET_GPU_TEMP: str = "get_gpu_temp"
 WMI_ACTION_GET_RPM: str = "get_rpm"
 WMI_ACTION_GET_CHARGE_POLICY: str = "get_charge_policy"
 WMI_ACTION_GET_CHARGE_STOP: str = "get_charge_stop"
-WMI_ACTION_CONFIGURE_MANUAL_FAN: str = "configure_manual_fan"
+WMI_ACTION_CONFIGURE_CUSTOM_FAN: str = "configure_custom_fan"
+WMI_ACTION_CONFIGURE_BIOS_FAN: str = "configure_bios_fan"
 WMI_ACTION_SET_FAN_SPEED_RAW: str = "set_fan_speed_raw"
 WMI_ACTION_SET_CHARGE_POLICY: str = "set_charge_policy"
 WMI_ACTION_SET_CHARGE_STOP: str = "set_charge_stop"
@@ -150,7 +152,7 @@ CHARGE_THRESHOLD_READ_ERROR_VALUE: int = -1
 INIT_APPLIED_PERCENTAGE: int = -1 # Initial state before first application
 
 # --- WMI Battery Policy Codes (Now handled internally by BatteryController) ---
-# The integer codes (0 for standard, 4 for custom) are now an implementation
+# The integer codes (0 for bios, 4 for custom) are now an implementation
 # detail of the BatteryController and are no longer defined globally.
 
 # ==============================================================================
