@@ -10,7 +10,7 @@ if sys.platform == 'win32':
     import ctypes
     from ctypes.wintypes import MSG
 import os
-from typing import List, Optional
+from typing import List, Optional, Any
 
 from .qt import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFrame, QMessageBox,
@@ -208,8 +208,8 @@ class MainWindow(QMainWindow):
         self.tray_icon = QSystemTrayIcon(self)
         
         # --- Step 1: Attempt to load the external icon file ---
-        # The base_dir is now accessed via app_runner -> app_services
-        base_dir = self.app_runner.app_services.base_dir
+        # The base_dir is now accessed directly from app_services
+        base_dir = self.app_services.base_dir
         external_icon_path = os.path.join(base_dir, APP_ICON_NAME)
         external_icon = QIcon(external_icon_path)
 
@@ -263,11 +263,11 @@ class MainWindow(QMainWindow):
 
     def connect_signals(self):
         """Connects signals from UI components to MainWindow's handlers or re-emits them."""
-        # TitleBar -> MainWindow -> AppRunner
-        self.title_bar.language_changed_signal.connect(self.language_changed_signal.emit)
-        self.title_bar.minimize_button.clicked.connect(self.showMinimized)
-        self.title_bar.maximize_button.clicked.connect(self._toggle_maximize)
-        self.title_bar.close_button.clicked.connect(self.close)
+        if self.title_bar:
+            self.title_bar.language_changed_signal.connect(self.language_changed_signal.emit)
+            self.title_bar.minimize_button.clicked.connect(self.showMinimized)
+            self.title_bar.maximize_button.clicked.connect(self._toggle_maximize)
+            self.title_bar.close_button.clicked.connect(self.close)
 
         # --- Connect AppServices state changes to the main update slot ---
         self.app_services.state_changed.connect(self.on_state_changed)
@@ -275,9 +275,12 @@ class MainWindow(QMainWindow):
         # --- Connect UI interactions to AppServices methods ---
         # (This will be done as panels are refactored. For now, we remove old VM connections)
 
-        # CurveCanvas -> MainWindow (for data changes and transient status)
-        self.curve_canvas.point_dragged.connect(self.on_curve_point_dragged)
-        self.curve_canvas.curve_changed.connect(self.on_curve_modified)
+        if self.curve_canvas:
+            self.curve_canvas.point_dragged.connect(self.on_curve_point_dragged)
+            self.curve_canvas.curve_changed.connect(self.on_curve_modified)
+
+        if self.curve_control_panel:
+            self.curve_control_panel.transient_status_signal.connect(self.set_transient_status)
 
     def apply_styles(self):
         """Applies the application stylesheet from an external file."""
@@ -315,7 +318,8 @@ class MainWindow(QMainWindow):
 
         # Update components owned by MainWindow
         if self.curve_canvas:
-            self.curve_canvas.update_temp_indicators(state.runtime.cpu_temp, state.runtime.gpu_temp)
+            self.curve_canvas.update_temp_indicators(state.cpu_temp, state.gpu_temp)
+            self.curve_canvas.set_active_curve(state.active_curve_type)
             # Update curves if they have changed
             # This logic will be refined when panels are refactored
             active_profile = state.profiles.get(state.active_profile_name)
@@ -325,7 +329,7 @@ class MainWindow(QMainWindow):
 
         is_dragging = self.curve_canvas and self.curve_canvas._dragging_point_index is not None
         if not is_dragging and not self._is_showing_transient_status:
-            status_key = state.runtime.controller_status_message
+            status_key = state.controller_status_message
             if self.title_bar:
                 self.title_bar.status_label.setText(tr(status_key) if status_key else "")
 
@@ -338,7 +342,7 @@ class MainWindow(QMainWindow):
         # Optionally update status bar if window is visible and not showing transient message
         if self._is_window_visible:
             # Display the error in the main status label as a transient message
-            self._set_transient_status(title)
+            self.set_transient_status(title)
 
 
     def set_controls_enabled_state(self, enabled: bool):
@@ -572,11 +576,16 @@ class MainWindow(QMainWindow):
             self.showMaximized()
 
     if sys.platform == 'win32':
-        def nativeEvent(self, event_type, message):
+        def nativeEvent(self, event_type: Any, message: int) -> tuple[bool, int]:
             """ Handles Windows native events to enable resizing and dragging. """
-            if event_type == "windows_generic_MSG":
+            # The return type needs to be compatible with the base class, which is complex.
+            # We return a tuple, but the base class might return something else.
+            # For practical purposes, we handle our cases and pass the rest to super.
+            result = (False, 0) # Default result
+
+            if event_type == b"windows_generic_MSG":
                 msg = MSG.from_address(message.__int__())
-                
+
                 # WM_NCHITTEST
                 if msg.message == 0x0084:
                     if self.isMaximized():
@@ -615,10 +624,11 @@ class MainWindow(QMainWindow):
                              # Check if cursor is over a button on the title bar
                             child_widget = self.title_bar.childAt(self.title_bar.mapFrom(self, local_pos))
                             if isinstance(child_widget, (QPushButton, QComboBox)):
-                                return super().nativeEvent(event_type, message)
+                                return super().nativeEvent(event_type, message) # type: ignore
                         return True, 2 # HTCAPTION
-
-            return super().nativeEvent(event_type, message)
+            
+            # If not handled, call super and return its result
+            return super().nativeEvent(event_type, message) # type: ignore
 
     @Slot(QSystemTrayIcon.ActivationReason)
     def on_tray_icon_activated(self, reason: QSystemTrayIcon.ActivationReason):
@@ -653,7 +663,7 @@ class MainWindow(QMainWindow):
             # Quit already initiated (e.g., from tray menu), allow close
             # Emit geometry so AppRunner can save it before shutdown.
             try:
-                geometry_hex = self.saveGeometry().toHex().data().decode('utf-8')
+                geometry_hex = self.saveGeometry().toHex().toStdString()
                 self.window_geometry_changed.emit(geometry_hex)
             except Exception as e:
                 print(f"Warning: Failed to save window geometry on close: {e}", file=sys.stderr)

@@ -8,6 +8,7 @@ the existing window and attempts recovery from crashes.
 
 import sys
 import os
+import ctypes
 from typing import Optional
 
 # Import settings for names, size, app name, startup argument

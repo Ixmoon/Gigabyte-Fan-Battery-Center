@@ -9,10 +9,10 @@ toggling start on boot, and resetting curves.
 from .qt import (
     QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QButtonGroup, QCheckBox,
     QSpacerItem, QSizePolicy, QFrame, QInputDialog, QMessageBox,
-    Signal, Qt, QEvent, QObject, QLineEdit
+    Signal, Qt, QEvent, QObject, QLineEdit, QMouseEvent
 )
 
-from typing import List, Optional, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING, cast
 
 from tools.localization import tr
 
@@ -109,9 +109,11 @@ class CurveControlPanel(QFrame):
     def update_state(self, state: 'AppState'):
         """Updates the entire panel from the new AppState."""
         self._update_curve_type_display(state.active_curve_type)
-        self._rebuild_profile_buttons(state.profile_names, state.active_profile_name)
-        self._update_start_on_boot_display(state.is_start_on_boot_enabled)
-        self.set_panel_enabled(not state.is_auto_fan_control_enabled)
+        self._rebuild_profile_buttons(list(state.profiles.keys()), state.active_profile_name)
+        self._update_start_on_boot_display(state.start_on_boot)
+
+        # The panel's enabled state should follow the global state
+        self.set_panel_enabled(state.is_panel_enabled)
 
     def _rebuild_profile_buttons(self, profile_names: List[str], active_profile_name: Optional[str]) -> None:
         """Clears and recreates profile buttons directly in controls_layout."""
@@ -119,11 +121,13 @@ class CurveControlPanel(QFrame):
         # Assuming profile buttons are direct children of a layout that's part of main_layout
         # This needs to reliably get controls_layout.
         # Since _init_ui sets self.layout() to main_layout, and controls_layout is a child of main_layout:
-        if not self.layout() or not isinstance(self.layout().itemAt(0), QHBoxLayout): # main_layout should have controls_layout at index 0
-             return
-        controls_layout = self.layout().itemAt(0).layout() # This should be controls_layout
-        if not controls_layout:
+        layout = self.layout()
+        if not layout:
             return
+        layout_item = layout.itemAt(0)
+        if not layout_item or not isinstance(layout_item.layout(), QHBoxLayout):
+            return
+        controls_layout = cast(QHBoxLayout, layout_item.layout())
 
         # Clear existing buttons from layout and group
         for button in self.profile_buttons:
@@ -173,10 +177,10 @@ class CurveControlPanel(QFrame):
 
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:
         if isinstance(obj, QPushButton) and obj in self.profile_buttons:
-            if event.type() == QEvent.Type.MouseButtonDblClick and event.button() == Qt.MouseButton.LeftButton:
+            if event.type() == QEvent.Type.MouseButtonDblClick and isinstance(event, QMouseEvent) and event.button() == Qt.MouseButton.LeftButton:
                 self._handle_profile_button_double_click(obj)
                 return True
-            elif event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.RightButton:
+            elif event.type() == QEvent.Type.MouseButtonPress and isinstance(event, QMouseEvent) and event.button() == Qt.MouseButton.RightButton:
                 self._handle_profile_button_right_click(obj)
                 event.accept()
                 return True

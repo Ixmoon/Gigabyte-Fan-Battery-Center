@@ -8,7 +8,7 @@ Loads language strings from a JSON file and provides a translation function.
 import json
 import os
 import sys
-from typing import Dict
+from typing import Dict, Optional
 
 # Import settings needed for defaults and paths
 from config.settings import (
@@ -148,15 +148,21 @@ DEFAULT_ENGLISH_TRANSLATIONS: Dict[str, str] = {
 _translations: Dict[str, Dict[str, str]] = {}
 _current_language: str = DEFAULT_LANGUAGE
 _translations_loaded: bool = False
+_language_file_path: Optional[str] = None # Cache the file path
 
 # --- Language Loading Function ---
-def load_translations(file_path: str, force_reload: bool = False) -> Dict[str, Dict[str, str]]:
+def load_translations(file_path: Optional[str] = None, force_reload: bool = False) -> Dict[str, Dict[str, str]]:
     """
     Loads translations from the specified JSON file.
     Creates a default English file if the specified file doesn't exist or is invalid.
     Merges loaded translations with defaults to ensure all keys are present.
     """
-    global _translations, _current_language, _translations_loaded
+    global _translations, _current_language, _translations_loaded, _language_file_path
+    if file_path:
+        _language_file_path = file_path
+    elif not _language_file_path:
+        raise ValueError("load_translations must be called with a file_path on the first run.")
+
     if _translations_loaded and not force_reload:
         return _translations
 
@@ -165,34 +171,34 @@ def load_translations(file_path: str, force_reload: bool = False) -> Dict[str, D
     write_default_file = False
 
     try:
-        if os.path.exists(file_path):
+        if os.path.exists(_language_file_path):
             # Check if file is empty before trying to load
-            if os.path.getsize(file_path) > 0:
-                with open(file_path, 'r', encoding='utf-8') as f:
+            if os.path.getsize(_language_file_path) > 0:
+                with open(_language_file_path, 'r', encoding='utf-8') as f:
                     loaded_data = json.load(f)
                 if not isinstance(loaded_data, dict):
-                    print(f"Warning: Invalid format in language file '{file_path}'. Using default English.", file=sys.stderr)
+                    print(f"Warning: Invalid format in language file '{_language_file_path}'. Using default English.", file=sys.stderr)
                     loaded_data = {}
                     write_default_file = True # Overwrite invalid file
             else:
                 # File exists but is empty
-                print(f"Warning: Language file '{file_path}' is empty. Using default English.", file=sys.stderr)
+                print(f"Warning: Language file '{_language_file_path}' is empty. Using default English.", file=sys.stderr)
                 loaded_data = {}
                 write_default_file = True # Overwrite empty file
         else:
             # File not found, create default English file
-            print(f"Language file '{file_path}' not found. Creating default English file.")
+            print(f"Language file '{_language_file_path}' not found. Creating default English file.")
             loaded_data = {} # Start with empty data
             write_default_file = True
 
     except (json.JSONDecodeError, IOError) as e:
         # Log error and force using defaults, overwrite corrupted file
-        print(f"Error: Could not load or parse language file '{file_path}'. Using default English.\nError: {e}", file=sys.stderr)
+        print(f"Error: Could not load or parse language file '{_language_file_path}'. Using default English.\nError: {e}", file=sys.stderr)
         loaded_data = {}
         write_default_file = True
     except Exception as e:
         # Catch other potential errors during file access/loading
-        print(f"Error: Unexpected error loading language file '{file_path}'. Using default English.\nError: {e}", file=sys.stderr)
+        print(f"Error: Unexpected error loading language file '{_language_file_path}'. Using default English.\nError: {e}", file=sys.stderr)
         loaded_data = {}
         # Decide if you want to overwrite on unexpected errors, maybe not?
         # write_default_file = True
@@ -200,12 +206,12 @@ def load_translations(file_path: str, force_reload: bool = False) -> Dict[str, D
     # Write the default file if needed (missing, empty, or invalid format)
     if write_default_file:
         try:
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
-            with open(file_path, 'w', encoding='utf-8') as f:
+            os.makedirs(os.path.dirname(_language_file_path), exist_ok=True)
+            with open(_language_file_path, 'w', encoding='utf-8') as f:
                 json.dump(default_data, f, indent=4, ensure_ascii=False)
-            print(f"Default language file saved/overwritten at '{file_path}'.")
+            print(f"Default language file saved/overwritten at '{_language_file_path}'.")
         except IOError as e:
-            print(f"Error: Could not save default language file to '{file_path}'.\nError: {e}", file=sys.stderr)
+            print(f"Error: Could not save default language file to '{_language_file_path}'.\nError: {e}", file=sys.stderr)
             # Continue with default data in memory even if saving failed
 
     # Merge loaded data with defaults
@@ -242,6 +248,8 @@ def set_language(lang_code: str):
 def tr(key: str, **kwargs) -> str:
     """
     Translates a given key using the current language setting.
+    This function is annotated to always return a string, as it falls back
+    to the key itself if no translation is found.
     """
     # ... (function content unchanged) ...
     global _current_language, _translations
@@ -249,7 +257,7 @@ def tr(key: str, **kwargs) -> str:
     # Ensure translations are loaded (should be called explicitly early on)
     if not _translations_loaded:
         print("Warning: Attempting to translate before translations are loaded. Loading defaults now.", file=sys.stderr)
-        load_translations() # Attempt to load
+        load_translations() # Attempt to load, will use cached path
 
     # Get the dictionary for the current language, fallback to English dict
     lang_dict = _translations.get(_current_language)

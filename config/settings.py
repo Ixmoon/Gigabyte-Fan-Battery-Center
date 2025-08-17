@@ -34,8 +34,8 @@ DEFAULT_START_MINIMIZED: bool = False # Default for when launched via auto-start
 FAN_MODE_AUTO = "auto"
 FAN_MODE_FIXED = "fixed"
 FAN_MODE_UNKNOWN = "unknown"
-CHARGE_POLICY_STANDARD_STR = "standard"
-CHARGE_POLICY_CUSTOM_STR = "custom"
+CHARGE_POLICY_STANDARD = "standard"
+CHARGE_POLICY_CUSTOM = "custom"
 FAN_MODE_AUTO_EQUIVALENT_SPEED = 0 # The speed that effectively enables EC/BIOS auto control
 
 # --- Default Profile Settings ---
@@ -44,7 +44,7 @@ DEFAULT_CPU_FAN_TABLE: List[List[int]] = [[50, 0], [60, 15], [70, 25], [80, 40],
 DEFAULT_GPU_FAN_TABLE: List[List[int]] = [[40, 0], [55, 15], [65, 25], [70, 40], [75, 60], [80, 80], [85, 100]]
 DEFAULT_FAN_MODE: str = FAN_MODE_AUTO
 DEFAULT_FIXED_FAN_SPEED: int = 30 # Percentage
-DEFAULT_CHARGE_POLICY: str = CHARGE_POLICY_CUSTOM_STR
+DEFAULT_CHARGE_POLICY: str = CHARGE_POLICY_CUSTOM
 DEFAULT_CHARGE_THRESHOLD: int = 80 # Percentage
 
 # --- Default Control Logic & Timing (per profile) ---
@@ -73,12 +73,12 @@ DEFAULT_ALPHA_INACTIVE: float = 0.4
 
 # --- Combine all default profile settings into one dictionary ---
 DEFAULT_PROFILE_SETTINGS: Dict[str, any] = {
-    "cpu_fan_table": [list(p) for p in DEFAULT_CPU_FAN_TABLE],
-    "gpu_fan_table": [list(p) for p in DEFAULT_GPU_FAN_TABLE],
-    "fan_mode": DEFAULT_FAN_MODE,
-    "fixed_fan_speed": DEFAULT_FIXED_FAN_SPEED,
-    "charge_policy": DEFAULT_CHARGE_POLICY,
-    "charge_threshold": DEFAULT_CHARGE_THRESHOLD,
+    "CPU_FAN_TABLE": [list(p) for p in DEFAULT_CPU_FAN_TABLE],
+    "GPU_FAN_TABLE": [list(p) for p in DEFAULT_GPU_FAN_TABLE],
+    "FAN_MODE": DEFAULT_FAN_MODE,
+    "FIXED_FAN_SPEED": DEFAULT_FIXED_FAN_SPEED,
+    "BATTERY_CHARGE_POLICY": DEFAULT_CHARGE_POLICY,
+    "BATTERY_CHARGE_THRESHOLD": DEFAULT_CHARGE_THRESHOLD,
     "AUTO_MODE_CYCLE_DURATION_S": DEFAULT_AUTO_MODE_CYCLE_DURATION_S,
     "GUI_UPDATE_INTERVAL_MS": DEFAULT_GUI_UPDATE_INTERVAL_MS,
     "FAN_ADJUSTMENT_INTERVAL_S": DEFAULT_FAN_ADJUSTMENT_INTERVAL_S,
@@ -149,9 +149,9 @@ CHARGE_POLICY_READ_ERROR_VALUE: int = -1
 CHARGE_THRESHOLD_READ_ERROR_VALUE: int = -1
 INIT_APPLIED_PERCENTAGE: int = -1 # Initial state before first application
 
-# --- WMI Battery Policy Codes ---
-CHARGE_POLICY_STANDARD: int = 0
-CHARGE_POLICY_CUSTOM: int = 4 # Gigabyte specific code for custom threshold
+# --- WMI Battery Policy Codes (Now handled internally by BatteryController) ---
+# The integer codes (0 for standard, 4 for custom) are now an implementation
+# detail of the BatteryController and are no longer defined globally.
 
 # ==============================================================================
 # Control Logic Parameters

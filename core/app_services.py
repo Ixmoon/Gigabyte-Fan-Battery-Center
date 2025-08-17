@@ -9,17 +9,16 @@ unified, high-level API for the rest of the application to interact with.
 import os
 import sys
 import copy
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Callable
 from functools import wraps
 
 from gui.qt import QObject, Signal, Slot, QTimer
 
 # Import core components that this service will manage
 from .wmi_interface import WMIInterface, WMIError
-from .fan_controller import FanController
-from .battery_controller import BatteryController
+from .hardware_manager import BatteryManager, FanManager
 from .auto_temp_controller import AutoTemperatureController
-from .state import AppState, ProfileState, FAN_MODE_AUTO, FAN_MODE_FIXED, CHARGE_POLICY_CUSTOM
+from .state import AppState, ProfileState, FAN_MODE_AUTO, FAN_MODE_FIXED
 from tools.localization import tr
 from tools.task_scheduler import create_startup_task, delete_startup_task, is_startup_task_registered
 
@@ -28,6 +27,20 @@ from config.settings import DEFAULT_PROFILE_SETTINGS
 
 # Type Aliases
 FanTable = List[List[int]]
+
+
+def _handle_wmi_errors(func: Callable[..., bool]) -> Callable[..., bool]:
+    """Decorator to catch WMIError exceptions and update status."""
+    @wraps(func)
+    def wrapper(self: 'AppServices', *args: Any, **kwargs: Any) -> bool:
+        try:
+            return func(self, *args, **kwargs)
+        except WMIError as e:
+            print(f"WMI operation failed in '{func.__name__}': {e}", file=sys.stderr)
+            self.set_controller_status_message(tr("wmi_error"))
+            return False # Indicate failure
+    return wrapper
+
 
 class AppServices(QObject):
     """
@@ -40,15 +53,16 @@ class AppServices(QObject):
     # Emits the config dictionary when it needs to be saved.
     config_save_requested = Signal(object)
 
-    def __init__(self, config_data: Dict[str, Any], parent: Optional[QObject] = None):
+    def __init__(self, config_data: Dict[str, Any], base_dir: str, parent: Optional[QObject] = None):
         super().__init__(parent)
         self._is_shutting_down = False
+        self.base_dir = base_dir
 
         # --- 1. Initialize Core Components ---
         self.wmi_interface = WMIInterface()
-        self.fan_controller = FanController(self.wmi_interface)
-        self.battery_controller = BatteryController(self.wmi_interface)
-        self.auto_temp_controller = AutoTemperatureController(self.wmi_interface, self.fan_controller)
+        self.battery_manager = BatteryManager(self.wmi_interface)
+        self.fan_manager = FanManager(self.wmi_interface)
+        self.auto_temp_controller = AutoTemperatureController(self.wmi_interface, self.fan_manager)
 
         # --- 2. State Management ---
         # The AppState object is the single source of truth for the entire application.
@@ -99,18 +113,6 @@ class AppServices(QObject):
 
     # --- Public API for UI ---
 
-    def _handle_wmi_errors(func):
-        """Decorator to catch WMIError exceptions and update status."""
-        @wraps(func)
-        def wrapper(self, *args, **kwargs):
-            try:
-                return func(self, *args, **kwargs)
-            except WMIError as e:
-                print(f"WMI operation failed in '{func.__name__}': {e}", file=sys.stderr)
-                self.set_controller_status_message(tr("wmi_error"))
-                return False # Indicate failure
-        return wrapper
-
     @_handle_wmi_errors
     def set_fan_mode(self, mode: str) -> bool:
         """High-level function to set the fan mode."""
@@ -120,10 +122,10 @@ class AppServices(QObject):
         if not active_profile: return False
 
         if mode == FAN_MODE_AUTO:
-            self.fan_controller.set_mode_auto()
+            self.fan_manager.set_mode_auto()
             self.auto_temp_controller.start_auto_mode()
         elif mode == FAN_MODE_FIXED:
-            self.fan_controller.set_mode_fixed(active_profile.fixed_fan_speed)
+            self.fan_manager.set_mode_fixed(active_profile.fixed_fan_speed)
         else:
             return False
 
@@ -138,39 +140,46 @@ class AppServices(QObject):
         if not active_profile or active_profile.fan_mode != FAN_MODE_FIXED:
             return True
 
-        if self.fan_controller.set_mode_fixed(speed):
+        if self.fan_manager.set_mode_fixed(speed):
             active_profile.fixed_fan_speed = speed
             self._commit_state_change(save_config=True)
             return True
         return False
 
     @_handle_wmi_errors
-    def set_charge_policy(self, policy: str) -> bool:
-        """High-level function to set the battery charge policy."""
+    def set_battery_charge_policy(self, policy_name: str) -> bool:
+        """Sets the battery charge policy using the hardware manager."""
         active_profile = self._get_active_profile()
         if not active_profile: return False
 
-        self.battery_controller.set_policy(policy)
-        active_profile.charge_policy = policy
-
-        if policy == CHARGE_POLICY_CUSTOM:
-            self.set_charge_threshold(active_profile.charge_threshold)
-
-        self._commit_state_change(save_config=True)
-        return True
-
-    @_handle_wmi_errors
-    def set_charge_threshold(self, threshold: int) -> bool:
-        """High-level function to set the charge threshold."""
-        active_profile = self._get_active_profile()
-        if not active_profile or active_profile.charge_policy != CHARGE_POLICY_CUSTOM:
-            return True
-
-        if self.battery_controller.set_threshold(threshold):
-            active_profile.charge_threshold = threshold
+        if self.battery_manager.set_policy(policy_name):
+            active_profile.battery_charge_policy = policy_name
+            # If setting a custom policy, immediately apply its threshold as well.
+            if policy_name == "custom":
+                self.set_battery_charge_threshold(active_profile.battery_charge_threshold)
             self._commit_state_change(save_config=True)
             return True
-        return False
+        else:
+            self.perform_status_update()  # Re-sync state on failure
+            return False
+
+    @_handle_wmi_errors
+    def set_battery_charge_threshold(self, threshold: int) -> bool:
+        """Sets the battery charge threshold using the hardware manager."""
+        active_profile = self._get_active_profile()
+        if not active_profile: return False
+
+        # Only set the hardware threshold if the current policy is 'custom'.
+        if active_profile.battery_charge_policy != "custom":
+            return True
+
+        if self.battery_manager.set_charge_threshold(threshold):
+            active_profile.battery_charge_threshold = threshold
+            self._commit_state_change(save_config=True)
+            return True
+        else:
+            self.perform_status_update()  # Re-sync state on failure
+            return False
 
     def set_curve_data(self, curve_type: str, data: FanTable):
         """High-level function to update fan curve data."""
@@ -184,12 +193,6 @@ class AppServices(QObject):
 
         self._update_auto_controller_curves()
         self._commit_state_change(save_config=True)
-
-    def reset_active_curve(self, curve_type: str):
-        """Resets the specified curve to its default values."""
-        default_key = f"{curve_type}_fan_table"
-        default_table = copy.deepcopy(DEFAULT_PROFILE_SETTINGS.get(default_key, []))
-        self.set_curve_data(curve_type, default_table)
 
     @Slot(str)
     def activate_profile(self, profile_name: str, is_initial_load: bool = False):
@@ -205,11 +208,11 @@ class AppServices(QObject):
         # Apply settings to controllers
         self._update_auto_controller_curves()
         # The auto_temp_controller will read settings directly from the profile object
-        self.auto_temp_controller.update_auto_settings(active_profile)
+        self.auto_temp_controller.update_auto_settings(active_profile) # type: ignore
 
         # Apply hardware state
         self.set_fan_mode(active_profile.fan_mode)
-        self.set_charge_policy(active_profile.charge_policy)
+        self.set_battery_charge_policy(active_profile.battery_charge_policy)
 
         # Restart timers if needed
         self.set_active_updates(True)
@@ -243,6 +246,18 @@ class AppServices(QObject):
                 self.state.active_profile_name = new_name
             self._commit_state_change(save_config=True)
 
+    def set_language(self, lang_code: str):
+        """Sets the application language and saves the config."""
+        if self.state.language != lang_code:
+            self.state.language = lang_code
+            self._commit_state_change(save_config=True)
+
+    def set_window_geometry(self, geometry: bytes):
+        """Sets the window geometry and saves the config."""
+        if self.state.window_geometry != geometry:
+            self.state.window_geometry = geometry
+            self._commit_state_change(save_config=True)
+
     def set_start_on_boot(self, enabled: bool):
         """Enables or disables the 'Start on Boot' task."""
         if os.name != 'nt': return
@@ -255,7 +270,7 @@ class AppServices(QObject):
         
         try:
             if enabled:
-                create_startup_task()
+                create_startup_task(self.base_dir)
             else:
                 delete_startup_task()
             self.state.start_on_boot = enabled
@@ -279,7 +294,7 @@ class AppServices(QObject):
 
     def reset_curve_data(self, curve_type: str):
         """Resets the specified curve to its default values."""
-        default_key = f"{curve_type}_fan_table"
+        default_key = f"{curve_type.upper()}_FAN_TABLE"
         default_table = copy.deepcopy(DEFAULT_PROFILE_SETTINGS.get(default_key, []))
         self.set_curve_data(curve_type, default_table)
 
@@ -292,17 +307,19 @@ class AppServices(QObject):
             return
 
         # Update runtime state with new sensor values
-        self.state.runtime.cpu_temp = self.wmi_interface.get_cpu_temperature()
-        self.state.runtime.gpu_temp = self.wmi_interface.get_gpu_temperature()
-        self.state.runtime.cpu_fan_rpm = self.wmi_interface.get_fan_rpm(1)
-        self.state.runtime.gpu_fan_rpm = self.wmi_interface.get_fan_rpm(2)
+        self.state.cpu_temp = self.wmi_interface.get_cpu_temperature()
+        self.state.gpu_temp = self.wmi_interface.get_gpu_temperature()
+        self.state.cpu_fan_rpm = self.wmi_interface.get_fan_rpm(1)
+        self.state.gpu_fan_rpm = self.wmi_interface.get_fan_rpm(2)
 
-        self.battery_controller.refresh_status()
-        self.state.runtime.applied_charge_policy = self.battery_controller.current_policy
-        self.state.runtime.applied_charge_threshold = self.battery_controller.current_threshold
+        # Get battery status via the hardware manager for proper abstraction
+        battery_status = self.battery_manager.get_status()
+        if battery_status:
+            self.state.applied_charge_policy = battery_status.get('charge_policy', 'err')
+            self.state.applied_charge_threshold = battery_status.get('charge_threshold', 0)
         
-        self.state.runtime.applied_fan_mode = self.fan_controller.current_mode
-        self.state.runtime.applied_fan_speed_percent = self.fan_controller.applied_percentage
+        self.state.applied_fan_mode = self.fan_manager.current_mode
+        self.state.applied_fan_speed_percent = self.fan_manager.applied_percentage
 
         self._commit_state_change(save_config=False)
 
@@ -319,8 +336,8 @@ class AppServices(QObject):
         if is_active:
             if self.status_update_timer.isActive():
                 self.status_update_timer.stop()
-            # This setting will be removed from the profile later, but we use it for now
-            interval_ms = getattr(active_profile, 'GUI_UPDATE_INTERVAL_MS', 1000)
+            # This setting is now correctly part of the profile state
+            interval_ms = active_profile.gui_update_interval_ms
             self.status_update_timer.start(max(200, interval_ms))
             print(f"Status updates started (interval: {interval_ms}ms).")
         else:
@@ -352,24 +369,45 @@ class AppServices(QObject):
             # In the new model, this is part of the runtime state.
             # We don't have a direct signal, but the next status update will carry it.
             # For immediate feedback, we can trigger a state change.
-            self.state.runtime.controller_status_message = message
+            self.state.controller_status_message = message
             self._commit_state_change(save_config=False)
 
     def _load_config_into_state(self, config_data: Dict[str, Any]):
-        """Populates the AppState object from a configuration dictionary."""
-        if not config_data:
-            # This should not happen if main.py handles config creation
-            print("Warning: AppServices received empty config data.", file=sys.stderr)
-            return
-
+        """
+        Populates the AppState object from a configuration dictionary, ensuring
+        robustness by merging with defaults and handling legacy fields.
+        """
+        # --- Load Global Settings ---
         self.state.language = config_data.get("language", "en")
         self.state.start_on_boot = config_data.get("start_on_boot", False)
         self.state.active_profile_name = config_data.get("active_profile_name", "Config 1")
         self.state.window_geometry = config_data.get("window_geometry")
 
+        # --- Load Profiles with Robust Merging ---
         self.state.profiles.clear()
-        for name, profile_dict in config_data.get("profiles", {}).items():
-            self.state.profiles[name] = ProfileState(**profile_dict)
+        profiles_data = config_data.get("profiles", {})
+
+        # If no profiles exist in config, create a default one
+        if not profiles_data:
+            profiles_data = {"Config 1": copy.deepcopy(DEFAULT_PROFILE_SETTINGS)}
+            self.state.active_profile_name = "Config 1"
+
+        # Get the set of valid field names from the ProfileState dataclass
+        profile_fields = ProfileState.__dataclass_fields__.keys()
+
+        for name, profile_dict in profiles_data.items():
+            # Start with a deep copy of the default settings
+            final_profile_data = copy.deepcopy(DEFAULT_PROFILE_SETTINGS)
+            # Update with the settings loaded from the user's config file
+            final_profile_data.update(profile_dict)
+
+            # Filter out any keys that are not defined in the ProfileState dataclass
+            # This handles legacy fields gracefully (e.g., AUTO_MODE_CYCLE_DURATION_S)
+            clean_profile_dict = {
+                key: final_profile_data[key] for key in profile_fields if key in final_profile_data
+            }
+
+            self.state.profiles[name] = ProfileState(**clean_profile_dict)
 
     def _get_state_for_config(self) -> Dict[str, Any]:
         """Returns a dictionary representing the persistent parts of the AppState."""

@@ -6,7 +6,7 @@ and manages the complete auto-mode control loop, including timing,
 temperature reads, and fan speed application.
 """
 
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, cast
 import sys
 
 # --- NEW: Import QTimer and dependencies ---
@@ -14,8 +14,9 @@ from gui.qt import QObject, QTimer, Slot
 
 # --- MODIFICATION: Import dependencies directly ---
 from .wmi_interface import WMIInterface
-from .fan_controller import FanController
+from .hardware_manager import FanManager
 from .interpolation import PchipInterpolator, clip, interp
+from .state import ProfileState
 # --- END MODIFICATION ---
 
 # Import settings for curve validation, limits, and auto-mode defaults
@@ -39,10 +40,10 @@ class AutoTemperatureController(QObject):
     """
 
     # --- MODIFIED: Add dependencies to __init__ ---
-    def __init__(self, wmi_interface: WMIInterface, fan_controller: FanController):
-        super().__init__() # Initialize QObject base class
+    def __init__(self, wmi_interface: WMIInterface, fan_manager: FanManager):
+        super().__init__()  # Initialize QObject base class
         self._wmi = wmi_interface
-        self._fan = fan_controller
+        self._fan = fan_manager
     # --- END MODIFIED ---
 
         # Curve data and interpolators
@@ -84,20 +85,13 @@ class AutoTemperatureController(QObject):
         self.reset_state()
 
 
-    def update_auto_settings(self, profile_settings: Dict[str, any]):
+    def update_auto_settings(self, profile: 'ProfileState'):
         """Updates the auto-mode control parameters from a profile."""
-        new_interval_s = profile_settings.get(
-            "FAN_ADJUSTMENT_INTERVAL_S", DEFAULT_PROFILE_SETTINGS['FAN_ADJUSTMENT_INTERVAL_S']
-        )
-        self._hysteresis_percent = profile_settings.get(
-            "FAN_HYSTERESIS_PERCENT", DEFAULT_PROFILE_SETTINGS['FAN_HYSTERESIS_PERCENT']
-        )
-        self._min_step = profile_settings.get(
-            "MIN_ADJUSTMENT_STEP", DEFAULT_PROFILE_SETTINGS['MIN_ADJUSTMENT_STEP']
-        )
-        self._max_step = profile_settings.get(
-            "MAX_ADJUSTMENT_STEP", DEFAULT_PROFILE_SETTINGS['MAX_ADJUSTMENT_STEP']
-        )
+        # The type hint 'ProfileState' is for clarity, not enforced at runtime
+        new_interval_s = profile.fan_adjustment_interval_s
+        self._hysteresis_percent = profile.fan_hysteresis_percent
+        self._min_step = profile.min_adjustment_step
+        self._max_step = profile.max_adjustment_step
         self._min_step = max(0, self._min_step)
         self._max_step = max(self._min_step, self._max_step)
 
@@ -167,8 +161,8 @@ class AutoTemperatureController(QObject):
 
     def _linear_interpolate(self, temperature: float, table: FanTable) -> float:
         """Performs simple linear interpolation as a fallback."""
-        temps = [p[0] for p in table]
-        speeds = [p[1] for p in table]
+        temps = [float(p[0]) for p in table]
+        speeds = [float(p[1]) for p in table]
         return interp(temperature, temps, speeds)
 
     def _interpolate_single_curve(self, temperature: float, table: FanTable, interpolator: Optional[PchipInterpolator]) -> int:
@@ -193,8 +187,12 @@ class AutoTemperatureController(QObject):
                 interp_speed = self._linear_interpolate(temperature, table)
         else:
             interp_speed = self._linear_interpolate(temperature, table)
-        
-        return int(round(float(clip(interp_speed, MIN_FAN_PERCENT, MAX_FAN_PERCENT))))
+
+        # To satisfy the linter, explicitly cast the result to float.
+        # In this context, with a float input, the output is always a float.
+        final_speed = cast(float, interp_speed)
+        clipped_speed = cast(float, clip(final_speed, MIN_FAN_PERCENT, MAX_FAN_PERCENT))
+        return int(round(clipped_speed))
 
     def _calculate_theoretical_target(self, cpu_temp: float, gpu_temp: float) -> int:
         """Calculates the raw target speed based on temps and curves."""

@@ -10,7 +10,7 @@ from .qt import (
     Signal, Qt, QMouseEvent, QResizeEvent, QMessageBox, QFont, QPolygonF,
     QSizePolicy, QPixmap
 )
-from typing import List, Optional, Any, Dict, Tuple
+from typing import List, Optional, Any, Dict, Tuple, cast
 import math
 
 from core.interpolation import PchipInterpolator, linspace, clip, interp
@@ -32,7 +32,7 @@ class LightweightCurveCanvas(QWidget):
     curve_changed = Signal(CurveType)
     point_selected = Signal(CurveType, int)
 
-    def __init__(self, parent: QWidget = None):
+    def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.setMinimumSize(400, 250)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -171,7 +171,7 @@ class LightweightCurveCanvas(QWidget):
         # Vertical grid lines and temp labels
         for temp in range(MIN_TEMP_C, MAX_TEMP_C + 1, 10):
             p = self._data_to_widget_coords(temp, MIN_FAN_PERCENT)
-            painter.drawLine(p.x(), self._plot_area.top(), p.x(), self._plot_area.bottom())
+            painter.drawLine(int(p.x()), int(self._plot_area.top()), int(p.x()), int(self._plot_area.bottom()))
             painter.setPen(label_color)
             painter.drawText(QRectF(p.x() - 20, self._plot_area.bottom() + 5, 40, 20), Qt.AlignmentFlag.AlignCenter, f"{temp}{tr('celsius_unit')}")
             painter.setPen(pen)
@@ -179,7 +179,7 @@ class LightweightCurveCanvas(QWidget):
         # Horizontal grid lines and speed labels
         for speed in range(MIN_FAN_PERCENT, MAX_FAN_PERCENT + 1, 10):
             p = self._data_to_widget_coords(MIN_TEMP_C, speed)
-            painter.drawLine(self._plot_area.left(), p.y(), self._plot_area.right(), p.y())
+            painter.drawLine(int(self._plot_area.left()), int(p.y()), int(self._plot_area.right()), int(p.y()))
             painter.setPen(label_color)
             painter.drawText(QRectF(self._plot_area.left() - 50, p.y() - 10, 45, 20), Qt.AlignmentFlag.AlignRight, f"{speed}{tr('percent_unit')}")
             painter.setPen(pen)
@@ -214,9 +214,10 @@ class LightweightCurveCanvas(QWidget):
                 if interpolator:
                     spline_points = self._get_setting("SPLINE_POINTS", 100)
                     temps_smooth = linspace(interpolator.x[0], interpolator.x[-1], spline_points)
-                    speeds_smooth = clip(interpolator(temps_smooth), MIN_FAN_PERCENT, MAX_FAN_PERCENT)
-                    
-                    smooth_points = [self._data_to_widget_coords(t, s) for t, s in zip(temps_smooth, speeds_smooth)]
+                    speeds_smooth_raw = interpolator(temps_smooth)
+                    speeds_smooth = clip(cast(List[float], speeds_smooth_raw), MIN_FAN_PERCENT, MAX_FAN_PERCENT)
+
+                    smooth_points = [self._data_to_widget_coords(t, s) for t, s in zip(temps_smooth, cast(List[float], speeds_smooth))]
                     poly = QPolygonF(smooth_points)
                     painter.drawPolyline(poly)
                 else:
@@ -271,8 +272,8 @@ class LightweightCurveCanvas(QWidget):
                 color = QColor(self._get_setting("CPU_TEMP_INDICATOR_COLOR"))
                 pen = QPen(color, 1.5, Qt.PenStyle.DotLine)
                 painter.setPen(pen)
-                painter.drawLine(p.x(), self._plot_area.bottom(), p.x(), p.y())
-                painter.drawLine(self._plot_area.left(), p.y(), p.x(), p.y())
+                painter.drawLine(int(p.x()), int(self._plot_area.bottom()), int(p.x()), int(p.y()))
+                painter.drawLine(int(self._plot_area.left()), int(p.y()), int(p.x()), int(p.y()))
 
         # GPU Indicator
         if self.gpu_temp != TEMP_READ_ERROR_VALUE and self.gpu_curve_data:
@@ -282,8 +283,8 @@ class LightweightCurveCanvas(QWidget):
                 color = QColor(self._get_setting("GPU_TEMP_INDICATOR_COLOR"))
                 pen = QPen(color, 1.5, Qt.PenStyle.DotLine)
                 painter.setPen(pen)
-                painter.drawLine(p.x(), self._plot_area.bottom(), p.x(), p.y())
-                painter.drawLine(self._plot_area.left(), p.y(), p.x(), p.y())
+                painter.drawLine(int(p.x()), int(self._plot_area.bottom()), int(p.x()), int(p.y()))
+                painter.drawLine(int(self._plot_area.left()), int(p.y()), int(p.x()), int(p.y()))
 
     def _get_target_speed_for_indicator(self, temperature: float, curve_type: CurveType) -> int:
         table = self.cpu_curve_data if curve_type == 'cpu' else self.gpu_curve_data
@@ -292,19 +293,19 @@ class LightweightCurveCanvas(QWidget):
         try:
             interpolator = self._get_cached_interpolator(curve_type)
             if interpolator:
-                speed = interpolator(temperature)
-                return int(round(speed))
+                speed_raw = interpolator(temperature)
+                return int(round(cast(float, speed_raw)))
             else: # Fallback to simple linear interpolation if not enough points for PCHIP
-                temps = [p[0] for p in table]
-                speeds = [p[1] for p in table]
-                speed = interp(temperature, temps, speeds)
-                return int(round(speed))
+                temps = [float(p[0]) for p in table]
+                speeds = [float(p[1]) for p in table]
+                speed_raw = interp(temperature, temps, speeds)
+                return int(round(cast(float, speed_raw)))
         except Exception:
             # Fallback for any interpolation error
-            temps = [p[0] for p in table]
-            speeds = [p[1] for p in table]
-            speed = interp(temperature, temps, speeds)
-            return int(round(speed))
+            temps = [float(p[0]) for p in table]
+            speeds = [float(p[1]) for p in table]
+            speed_raw = interp(temperature, temps, speeds)
+            return int(round(cast(float, speed_raw)))
 
     def _invalidate_interpolator_cache(self, curve_type: CurveType):
         """Invalidates the cached interpolator for a given curve type."""
@@ -346,7 +347,17 @@ class LightweightCurveCanvas(QWidget):
         return None
 
     def apply_appearance_settings(self, settings: Dict[str, Any]):
-        self._appearance_settings = settings.copy()
+        # Start with a full set of defaults to ensure all keys are present
+        new_settings = DEFAULT_PROFILE_SETTINGS.copy()
+        
+        # Convert all incoming keys to uppercase to match the internal constants
+        # This resolves the case-sensitivity issue between ProfileState (lowercase)
+        # and internal _get_setting calls (uppercase).
+        settings_upper = {k.upper(): v for k, v in settings.items()}
+
+        # Then, update with the provided settings, overwriting defaults where specified
+        new_settings.update(settings_upper)
+        self._appearance_settings = new_settings
         self.update()
 
     def get_curve_data(self, curve_type: CurveType) -> FanTable:
@@ -371,7 +382,7 @@ class LightweightCurveCanvas(QWidget):
         if not self._plot_area.contains(event.pos()):
             return
 
-        point_info = self._get_point_at_event(event.pos())
+        point_info = self._get_point_at_event(QPointF(event.pos()))
 
         if event.button() == Qt.MouseButton.LeftButton:
             if point_info:
@@ -386,14 +397,14 @@ class LightweightCurveCanvas(QWidget):
 
     def mouseDoubleClickEvent(self, event: QMouseEvent):
         if self._plot_area.contains(event.pos()) and event.button() == Qt.MouseButton.LeftButton:
-            if self._get_point_at_event(event.pos()) is None:
-                self._add_point(event.pos())
+            if self._get_point_at_event(QPointF(event.pos())) is None:
+                self._add_point(QPointF(event.pos()))
 
     def mouseMoveEvent(self, event: QMouseEvent):
         if self._dragging_point_index is not None:
-            self._drag_point(event.pos())
+            self._drag_point(QPointF(event.pos()))
         else:
-            point_info = self._get_point_at_event(event.pos())
+            point_info = self._get_point_at_event(QPointF(event.pos()))
             new_hover_index = point_info[1] if point_info else None
             if new_hover_index != self._hovered_point_index:
                 self._hovered_point_index = new_hover_index
@@ -405,11 +416,12 @@ class LightweightCurveCanvas(QWidget):
             self._dragging_point_index = None
             self._dragging_curve_type = None
             
-            data = self.cpu_curve_data if curve_type == 'cpu' else self.gpu_curve_data
-            self._enforce_monotonicity_and_uniqueness(data)
-            self._invalidate_interpolator_cache(curve_type) # Invalidate after drag
-            self.curve_changed.emit(curve_type)
-            self.update()
+            if curve_type:
+                data = self.cpu_curve_data if curve_type == 'cpu' else self.gpu_curve_data
+                self._enforce_monotonicity_and_uniqueness(data)
+                self._invalidate_interpolator_cache(curve_type) # Invalidate after drag
+                self.curve_changed.emit(curve_type)
+                self.update()
 
     def _get_point_at_event(self, pos: QPointF) -> Optional[Tuple[CurveType, int]]:
         data = self.cpu_curve_data if self.active_curve_type == 'cpu' else self.gpu_curve_data
@@ -447,6 +459,9 @@ class LightweightCurveCanvas(QWidget):
         data = self.cpu_curve_data if self._dragging_curve_type == 'cpu' else self.gpu_curve_data
         idx = self._dragging_point_index
         
+        if idx is None or self._dragging_curve_type is None:
+            return
+
         temp, speed = self._widget_to_data_coords(pos)
         
         # Clamp temperature

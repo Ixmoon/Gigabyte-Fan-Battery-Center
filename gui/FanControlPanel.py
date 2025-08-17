@@ -80,18 +80,19 @@ class FanControlPanel(QFrame):
         """Updates the entire panel from the new AppState."""
         profile = state.profiles.get(state.active_profile_name)
 
+        # Panel is enabled only if a profile is active AND the global flag is set
+        is_panel_enabled = profile is not None and state.is_panel_enabled
+        self.set_panel_enabled(is_panel_enabled)
+
         if not profile:
-            self.set_panel_enabled(False)
             return
 
-        # Always enable the panel, but specific controls are managed below
-        self.set_panel_enabled(True)
         self._update_fan_mode_display(profile.fan_mode)
         self._update_fixed_speed_display(profile.fixed_fan_speed)
         
-        # Enable fixed speed controls only when in fixed mode
+        # Enable fixed speed controls only when in fixed mode AND the panel is enabled
         is_fixed_mode = (profile.fan_mode == "fixed")
-        self._update_fixed_speed_controls_enabled(is_fixed_mode)
+        self._update_fixed_speed_controls_enabled(is_fixed_mode and is_panel_enabled)
 
     def _handle_slider_value_changed_for_label(self, value: int):
         """Updates the speed label next to the slider as it's dragged."""

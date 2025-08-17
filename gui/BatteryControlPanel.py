@@ -12,8 +12,8 @@ from .qt import (
 from typing import TYPE_CHECKING, Optional
 
 from tools.localization import tr
-from config.settings import CHARGE_POLICY_STANDARD_STR, CHARGE_POLICY_CUSTOM_STR
-from core.state import AppState
+from core.state import AppState, CHARGE_POLICY_STANDARD, CHARGE_POLICY_CUSTOM
+
 
 if TYPE_CHECKING:
     from core.app_services import AppServices
@@ -51,8 +51,6 @@ class BatteryControlPanel(QFrame):
         self.charge_policy_button_group = QButtonGroup(self)
         self.charge_policy_button_group.addButton(self.standard_charge_radio) # No explicit ID needed if using object
         self.charge_policy_button_group.addButton(self.custom_charge_radio)
-        # Connect to ViewModel method
-        self.charge_policy_button_group.buttonToggled.connect(self._handle_policy_radio_toggled)
 
         self.charge_threshold_label = QLabel(tr("charge_threshold_label"))
         self.charge_threshold_slider = QSlider(Qt.Orientation.Horizontal)
@@ -93,7 +91,7 @@ class BatteryControlPanel(QFrame):
         self.charge_threshold_slider.blockSignals(True)
 
         # Update Charge Policy Radio Buttons
-        is_custom_mode = profile.battery_charge_policy == CHARGE_POLICY_CUSTOM_STR
+        is_custom_mode = profile.battery_charge_policy == CHARGE_POLICY_CUSTOM
         if is_custom_mode:
             self.custom_charge_radio.setChecked(True)
         else:
@@ -105,7 +103,7 @@ class BatteryControlPanel(QFrame):
         self.charge_threshold_value_label.setText(value_text)
 
         # Update Enabled/Disabled State
-        panel_enabled = state.is_ac_connected
+        panel_enabled = state.is_panel_enabled
         self.standard_charge_radio.setEnabled(panel_enabled)
         self.custom_charge_radio.setEnabled(panel_enabled)
         
@@ -121,7 +119,7 @@ class BatteryControlPanel(QFrame):
     def _handle_policy_radio_toggled(self, button: QRadioButton, checked: bool) -> None:
         """Handles user interaction with the charge policy radio buttons."""
         if checked:
-            new_policy = CHARGE_POLICY_CUSTOM_STR if button == self.custom_charge_radio else CHARGE_POLICY_STANDARD_STR
+            new_policy = CHARGE_POLICY_CUSTOM if button == self.custom_charge_radio else CHARGE_POLICY_STANDARD
             self.app_services.set_battery_charge_policy(new_policy)
 
     def _handle_slider_released(self) -> None:

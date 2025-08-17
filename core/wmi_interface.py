@@ -11,7 +11,7 @@ import queue
 import time
 import math
 import sys
-from typing import Optional, Any, Dict, Tuple, Callable
+from typing import Optional, Any, Dict, Tuple, Callable, TYPE_CHECKING
 
 # Import WMI libraries if available, providing a clear fallback path.
 _wmi_available = False
@@ -46,6 +46,11 @@ from config.settings import (
 )
 
 # --- Type Hinting ---
+if TYPE_CHECKING and wmi:
+    WMIConnectionType = wmi.WMI
+else:
+    WMIConnectionType = Any
+
 WMIResult = Tuple[Optional[Any], Optional[Exception]]
 WMIRequest = Tuple[str, Dict[str, Any], queue.Queue]
 
@@ -81,7 +86,7 @@ class WMIWorker(threading.Thread):
         self._request_queue = request_queue
         self._wmi_get_class_name = wmi_get_class
         self._wmi_set_class_name = wmi_set_class
-        self._wmi_conn: Optional[wmi.WMI] = None
+        self._wmi_conn: Optional[Any] = None
         self._wmi_get_obj: Optional[Any] = None
         self._wmi_set_obj: Optional[Any] = None
         self._com_initialized: bool = False
@@ -108,12 +113,14 @@ class WMIWorker(threading.Thread):
             self.initialization_error = WMIConnectionError("WMI or pythoncom library not found.")
             return False
         try:
-            pythoncom.CoInitializeEx(pythoncom.COINIT_MULTITHREADED)
-            self._com_initialized = True
+            if pythoncom:
+                pythoncom.CoInitializeEx(pythoncom.COINIT_MULTITHREADED)
+                self._com_initialized = True
 
-            self._wmi_conn = wmi.WMI(namespace=WMI_NAMESPACE)
-            self._wmi_get_obj = self._get_wmi_instance(self._wmi_get_class_name)
-            self._wmi_set_obj = self._get_wmi_instance(self._wmi_set_class_name)
+            if wmi:
+                self._wmi_conn = wmi.WMI(namespace=WMI_NAMESPACE)
+                self._wmi_get_obj = self._get_wmi_instance(self._wmi_get_class_name)
+                self._wmi_set_obj = self._get_wmi_instance(self._wmi_set_class_name)
 
             if not self._wmi_get_obj or not self._wmi_set_obj:
                 missing = [name for name, obj in [(self._wmi_get_class_name, self._wmi_get_obj),
@@ -141,7 +148,7 @@ class WMIWorker(threading.Thread):
 
     def _cleanup_com(self):
         """Uninitializes COM for this thread."""
-        if self._com_initialized and _pythoncom_available:
+        if self._com_initialized and _pythoncom_available and pythoncom:
             try:
                 pythoncom.CoUninitialize()
             except Exception as e:

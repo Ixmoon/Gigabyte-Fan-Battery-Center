@@ -7,9 +7,10 @@ provides a single source of truth for all application data, both persistent
 and transient.
 """
 
-from dataclasses import dataclass, field, asdict
-from typing import List, Dict, Optional
-
+from dataclasses import dataclass, field, asdict, fields
+from typing import List, Dict, Optional, Any
+from config.settings import DEFAULT_PROFILE_SETTINGS
+ 
 # ==============================================================================
 # State Constants
 # ==============================================================================
@@ -30,37 +31,40 @@ class ProfileState:
     Represents the complete set of user-configurable settings for a single profile.
     This structure is designed to be easily serialized to/from JSON.
     """
-    cpu_fan_table: List[List[int]] = field(default_factory=list)
-    gpu_fan_table: List[List[int]] = field(default_factory=list)
-    fan_mode: str = FAN_MODE_AUTO
-    fixed_fan_speed: int = 50
-    charge_policy: str = CHARGE_POLICY_CUSTOM
-    charge_threshold: int = 80
+    # Note: The keys in DEFAULT_PROFILE_SETTINGS are UPPER_CASE.
+    # The dataclass fields are lower_case. This is handled by load_from_dict.
+    cpu_fan_table: List[List[int]] = field(default_factory=lambda: DEFAULT_PROFILE_SETTINGS['CPU_FAN_TABLE'])
+    gpu_fan_table: List[List[int]] = field(default_factory=lambda: DEFAULT_PROFILE_SETTINGS['GPU_FAN_TABLE'])
+    fan_mode: str = field(default=DEFAULT_PROFILE_SETTINGS['FAN_MODE'])
+    fixed_fan_speed: int = field(default=DEFAULT_PROFILE_SETTINGS['FIXED_FAN_SPEED'])
+    battery_charge_policy: str = field(default=DEFAULT_PROFILE_SETTINGS['BATTERY_CHARGE_POLICY'])
+    battery_charge_threshold: int = field(default=DEFAULT_PROFILE_SETTINGS['BATTERY_CHARGE_THRESHOLD'])
+    fan_adjustment_interval_s: float = field(default=DEFAULT_PROFILE_SETTINGS['FAN_ADJUSTMENT_INTERVAL_S'])
+    fan_hysteresis_percent: int = field(default=DEFAULT_PROFILE_SETTINGS['FAN_HYSTERESIS_PERCENT'])
+    min_adjustment_step: int = field(default=DEFAULT_PROFILE_SETTINGS['MIN_ADJUSTMENT_STEP'])
+    max_adjustment_step: int = field(default=DEFAULT_PROFILE_SETTINGS['MAX_ADJUSTMENT_STEP'])
+    gui_update_interval_ms: int = field(default=DEFAULT_PROFILE_SETTINGS['GUI_UPDATE_INTERVAL_MS'])
 
     def to_dict(self) -> Dict:
         return asdict(self)
 
+    @classmethod
+    def load_from_dict(cls, data: Dict[str, Any]) -> 'ProfileState':
+        # Normalize all keys in the input dictionary to lowercase to match dataclass fields
+        normalized_data = {k.lower(): v for k, v in data.items()}
+        
+        # Get the field names defined in the dataclass
+        known_fields = {f.name for f in fields(cls)}
+        
+        # Prepare init data, filtering out any unknown keys from the input dict
+        init_data = {k: v for k, v in normalized_data.items() if k in known_fields}
 
-@dataclass
-class RuntimeState:
-    """
-    Represents the transient, real-time state of the application and hardware.
-    This data is not saved to disk.
-    """
-    cpu_temp: float = 0.0
-    gpu_temp: float = 0.0
-    cpu_fan_rpm: int = 0
-    gpu_fan_rpm: int = 0
-
-    # The actual values currently applied to the hardware
-    applied_fan_mode: str = FAN_MODE_AUTO
-    applied_fan_speed_percent: int = 0
-    applied_charge_policy: str = CHARGE_POLICY_STANDARD
-    applied_charge_threshold: int = 100
-
-    # UI-specific state
-    is_panel_enabled: bool = True
-    active_curve_type: str = "cpu" # 'cpu' or 'gpu'
+        # Ensure fan tables are lists of lists, not lists of tuples, which can happen after JSON deserialization
+        for key in ['cpu_fan_table', 'gpu_fan_table']:
+            if key in init_data and init_data[key]:
+                init_data[key] = [list(point) for point in init_data[key]]
+        
+        return cls(**init_data)
 
 
 @dataclass
@@ -76,5 +80,15 @@ class AppState:
     profiles: Dict[str, ProfileState] = field(default_factory=dict)
     window_geometry: Optional[bytes] = None # For storing QMainWindow geometry
 
-    # --- Transient Runtime State ---
-    runtime: RuntimeState = field(default_factory=RuntimeState)
+    # --- Transient Runtime State (Flattened) ---
+    cpu_temp: float = 0.0
+    gpu_temp: float = 0.0
+    cpu_fan_rpm: int = 0
+    gpu_fan_rpm: int = 0
+    applied_fan_mode: str = FAN_MODE_AUTO
+    applied_fan_speed_percent: int = 0
+    applied_charge_policy: str = CHARGE_POLICY_STANDARD
+    applied_charge_threshold: int = 100
+    is_panel_enabled: bool = True
+    active_curve_type: str = "cpu" # 'cpu' or 'gpu'
+    controller_status_message: str = ""

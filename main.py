@@ -57,6 +57,11 @@ from tools.single_instance import (
 from core.app_services import AppServices
 from gui.main_window import MainWindow
 
+# --- Global Variables ---
+app_services_instance: Optional[AppServices] = None
+app_runner_instance: Optional['AppRunner'] = None
+app_instance: Optional[QApplication] = None
+
 # --- Matplotlib Font Setup (Now removed as it's a dependency we got rid of) ---
 # This section is intentionally left blank.
 
@@ -142,21 +147,21 @@ class AppRunner(QObject):
 
     def save_window_geometry(self, geometry_hex: str):
         """Saves the window geometry to the config."""
-        self.app_services.save_setting("window_geometry", geometry_hex)
-        # No need to call save here, it will be saved on graceful shutdown
+        # Convert hex string to bytes for saving in state
+        self.app_services.set_window_geometry(geometry_hex.encode('utf-8'))
 
     def load_window_geometry(self):
         """Loads and applies window geometry from the config."""
-        geometry_hex = self.app_services.get_setting("window_geometry")
-        if geometry_hex:
-            self.main_window.restore_geometry_from_hex(geometry_hex)
+        geometry_bytes = self.app_services.state.window_geometry
+        if geometry_bytes:
+            # Decode bytes back to hex string for the UI method
+            self.main_window.restore_geometry_from_hex(geometry_bytes.decode('utf-8'))
 
     @Slot(str)
     def handle_language_change(self, lang_code: str):
         """Handles language change, saves it, and retranstales the UI."""
         set_language(lang_code)
-        self.app_services.save_setting("language", lang_code)
-        # The save will be triggered automatically via the config_save_requested signal
+        self.app_services.set_language(lang_code)
         self.main_window.retranslate_ui()
 
     @Slot(bool)
@@ -184,13 +189,6 @@ class AppRunner(QObject):
         if app:
             print("AppRunner: Quitting QApplication.")
             QTimer.singleShot(0, app.quit)
-
-# --- Global Variables ---
-# Moved here to resolve NameError, as AppRunner must be defined before use.
-app_services_instance: Optional[AppServices] = None
-app_runner_instance: Optional['AppRunner'] = None
-app_instance: Optional[QApplication] = None
-
 
 # --- Exception Handling Hook ---
 def handle_exception(exc_type, exc_value, exc_traceback):
@@ -281,7 +279,7 @@ def main():
     config_data = load_config(config_path)
 
     # --- Initialize Service Layer ---
-    app_services_instance = AppServices(config_data=config_data)
+    app_services_instance = AppServices(config_data=config_data, base_dir=BASE_DIR)
     if not app_services_instance.initialize():
         QMessageBox.critical(None, tr("initialization_error_title"), tr("initialization_error_msg"))
         sys.exit(1)
