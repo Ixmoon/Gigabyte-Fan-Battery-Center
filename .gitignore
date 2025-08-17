@@ -22,3 +22,4 @@ venv_std/
 .vscode/
 dist_nuitka/
 nuitka-crash-report.xml
+.roo/rules/rules.md
