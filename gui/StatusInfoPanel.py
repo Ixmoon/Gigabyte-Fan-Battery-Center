@@ -5,10 +5,18 @@ Status Information Panel QWidget for Fan & Battery Control.
 
 Displays CPU/GPU temperatures, fan RPMs, battery info, and controller status.
 """
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
 from .qt import QWidget, QGridLayout, QLabel, QFrame
 
 from tools.localization import tr
 from config.settings import TEMP_READ_ERROR_VALUE, RPM_READ_ERROR_VALUE
+from core.state import FAN_MODE_AUTO, CHARGE_POLICY_STANDARD, CHARGE_POLICY_CUSTOM
+
+if TYPE_CHECKING:
+    from core.state import AppState
+
 
 class StatusInfoPanel(QFrame):
     """
@@ -72,69 +80,58 @@ class StatusInfoPanel(QFrame):
         layout.setColumnStretch(1, 1) # Allow values to expand
         layout.setColumnStretch(3, 1)
 
-    def update_status(self, status_data: dict) -> None:
+    def update_state(self, state: AppState) -> None:
         """
-        Updates the display labels with new status data.
+        Updates the display labels with new data from the AppState.
 
         Args:
-            status_data: A dictionary containing the status information.
-                         Expected keys:
-                         'cpu_temp', 'gpu_temp', 'fan1_rpm', 'fan2_rpm',
-                         'applied_fan_percentage', 'theoretical_target_percentage',
-                         'current_fan_mode', 'current_charge_policy',
-                         'current_charge_threshold', 'controller_status_message'
+            state: The new application state.
         """
+        profile = state.profiles.get(state.active_profile_name)
+
         # Temperatures
-        cpu_temp = status_data.get('cpu_temp', TEMP_READ_ERROR_VALUE)
-        gpu_temp = status_data.get('gpu_temp', TEMP_READ_ERROR_VALUE)
+        cpu_temp = state.cpu_temp
+        gpu_temp = state.gpu_temp
         cpu_temp_str = f"{cpu_temp:.1f}{tr('celsius_unit')}" if cpu_temp != TEMP_READ_ERROR_VALUE else tr("temp_error")
         gpu_temp_str = f"{gpu_temp:.1f}{tr('celsius_unit')}" if gpu_temp != TEMP_READ_ERROR_VALUE else tr("temp_error")
         self.cpu_temp_value.setText(cpu_temp_str)
         self.gpu_temp_value.setText(gpu_temp_str)
 
         # RPMs
-        fan1_rpm = status_data.get('fan1_rpm', RPM_READ_ERROR_VALUE)
-        fan2_rpm = status_data.get('fan2_rpm', RPM_READ_ERROR_VALUE)
+        fan1_rpm = state.cpu_fan_rpm
+        fan2_rpm = state.gpu_fan_rpm
         rpm1_str = f"{fan1_rpm}{tr('rpm_unit')}" if fan1_rpm != RPM_READ_ERROR_VALUE else tr("rpm_error")
         rpm2_str = f"{fan2_rpm}{tr('rpm_unit')}" if fan2_rpm != RPM_READ_ERROR_VALUE else tr("rpm_error")
         self.fan1_rpm_value.setText(rpm1_str)
         self.fan2_rpm_value.setText(rpm2_str)
 
-        # Fan Speed / Target Display
-        applied_speed = status_data.get('applied_fan_percentage', -1)
-        target_speed = status_data.get('theoretical_target_percentage', -1)
-        fan_mode = status_data.get('current_fan_mode', 'unknown')
- 
-        applied_speed_str = f"{applied_speed}{tr('percent_unit')}" if applied_speed != -1 else tr("value_not_available")
-        target_speed_str = f"{target_speed}{tr('percent_unit')}" if target_speed != -1 else tr("value_not_available")
+        if not profile:
+            self.applied_target_value.setText(tr("value_not_available"))
+            self.battery_info_value.setText(tr("value_not_available"))
+            return
+
+        # Fan Speed / Target Display from Profile
+        fan_mode = profile.fan_mode
         
-        fan_display_text = applied_speed_str
-        if fan_mode == "auto":
-            fan_display_text = tr("fan_display_auto_format", applied=applied_speed_str, target=target_speed_str, mode=tr('mode_auto'))
-        elif fan_mode == "unknown":
-            fan_display_text = tr("fan_display_error_format", error=tr('wmi_error'), mode=tr('unknown_mode'))
+        if fan_mode == FAN_MODE_AUTO:
+            fan_display_text = tr('mode_auto')
+        else:  # Fixed mode
+            fan_display_text = f"{profile.fixed_fan_speed}{tr('percent_unit')}"
         self.applied_target_value.setText(fan_display_text)
- 
-        # Battery Info Display
-        charge_policy = status_data.get('current_charge_policy')
-        charge_threshold = status_data.get('current_charge_threshold', -1)
- 
+
+        # Battery Info Display from Profile
+        charge_policy = profile.battery_charge_policy
+        charge_threshold = profile.battery_charge_threshold
+
         policy_str = tr("policy_error")
-        if charge_policy == "standard":
+        if charge_policy == CHARGE_POLICY_STANDARD:
             policy_str = tr("mode_standard")
-        elif charge_policy == "custom":
+        elif charge_policy == CHARGE_POLICY_CUSTOM:
             policy_str = tr("mode_custom")
-        elif charge_policy is None:
-            policy_str = tr("unknown_mode")
- 
-        threshold_str = tr("threshold_error")
-        if charge_threshold != -1:
-            threshold_str = f"{charge_threshold}{tr('percent_unit')}"
+        
+        threshold_str = f"{charge_threshold}{tr('percent_unit')}"
         
         self.battery_info_value.setText(tr("battery_display_format", policy=policy_str, limit=threshold_str))
-
-        # Controller Status Message is now handled by the title bar
-        pass
 
     def retranslate_ui(self) -> None:
         """Retranslates all user-visible text in the panel."""
@@ -199,22 +196,14 @@ if __name__ == '__main__':
     panel.show()
     panel.resize(500, 150)
 
-    # Example data to update the panel
-    test_data_1 = {
-        'cpu_temp': 65.5, 'gpu_temp': 72.1, 'fan1_rpm': 2500, 'fan2_rpm': 2800,
-        'applied_fan_percentage': 60, 'theoretical_target_percentage': 65,
-        'current_fan_mode': 'auto', 'current_charge_policy': 'custom',
-        'current_charge_threshold': 80, 'controller_status_message': 'All systems nominal.'
-    }
-    test_data_2 = {
-        'cpu_temp': TEMP_READ_ERROR_VALUE, 'gpu_temp': 55.0, 'fan1_rpm': RPM_READ_ERROR_VALUE, 'fan2_rpm': 0,
-        'applied_fan_percentage': 0, 'theoretical_target_percentage': 0,
-        'current_fan_mode': 'fixed', 'current_charge_policy': 'standard',
-        'current_charge_threshold': 100, 'controller_status_message': 'CPU Temp Read Error.'
-    }
-    import functools
-    from .qt import QTimer
-    QTimer.singleShot(2000, functools.partial(panel.update_status, test_data_1))
-    QTimer.singleShot(5000, functools.partial(panel.update_status, test_data_2))
+    # Example data to update the panel (This test is now illustrative, as it doesn't use the AppState object)
+    # To properly test, one would need to construct an AppState object.
+    # For now, we can manually set text to see the layout.
+    panel.cpu_temp_value.setText(f"65.5{tr('celsius_unit')}")
+    panel.gpu_temp_value.setText(f"72.1{tr('celsius_unit')}")
+    panel.fan1_rpm_value.setText(f"2500{tr('rpm_unit')}")
+    panel.fan2_rpm_value.setText(f"2800{tr('rpm_unit')}")
+    panel.applied_target_value.setText(tr("fan_display_auto_simple_format", applied=f"60{tr('percent_unit')}", mode=tr('mode_auto')))
+    panel.battery_info_value.setText(tr("battery_display_format", policy=tr('mode_custom'), limit=f"80{tr('percent_unit')}"))
 
     sys.exit(app.exec())

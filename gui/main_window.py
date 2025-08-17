@@ -10,7 +10,7 @@ if sys.platform == 'win32':
     import ctypes
     from ctypes.wintypes import MSG
 import os
-from typing import List, Optional, NamedTuple
+from typing import List, Optional
 
 from .qt import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFrame, QMessageBox,
@@ -20,81 +20,57 @@ from .qt import (
 )
 
 from .lightweight_curve_canvas import LightweightCurveCanvas as CurveCanvas
-# --- MODIFICATION: Import new panel components ---
 from .StatusInfoPanel import StatusInfoPanel
 from .CurveControlPanel import CurveControlPanel
 from .FanControlPanel import FanControlPanel
 from .BatteryControlPanel import BatteryControlPanel
 from .custom_title_bar import CustomTitleBar
-# --- END MODIFICATION ---
 
-# --- ViewModel Imports ---
-from viewmodels.fan_control_viewmodel import FanControlViewModel
-from viewmodels.battery_control_viewmodel import BatteryControlViewModel
-from viewmodels.curve_control_viewmodel import CurveControlViewModel
-# --- END ViewModel Imports ---
+# --- ViewModel Imports Removed ---
 
-from tools.config_manager import ConfigManager, ProfileSettings
+from core.state import AppState # Import the main state object
 from tools.localization import tr, get_available_languages, set_language, get_current_language
 from tools.task_scheduler import create_startup_task, delete_startup_task, is_startup_task_registered
 from config.settings import (
     APP_NAME, APP_ICON_NAME, DEFAULT_PROFILE_SETTINGS
 )
 
-# --- MODIFICATION: Forward declare AppRunner for type hint ---
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from run import AppRunner
-# --- END MODIFICATION ---
+    from main import AppRunner
+    from core.app_services import AppServices
 
-class AppStatus(NamedTuple): # This might be passed TO ViewModels, or ViewModels might define their own data structures
-    cpu_temp: float
-    gpu_temp: float
-    fan1_rpm: int
-    fan2_rpm: int
-    current_fan_mode: str # 'auto', 'fixed', 'unknown'
-    applied_fan_percentage: int # Current speed %
-    theoretical_target_percentage: int # Target % based on temp/curve (if auto)
-    current_charge_policy: Optional[str] # 'standard', 'custom', None if unknown
-    current_charge_threshold: int # Current limit %
-    controller_status_message: str # e.g., "Ready", "WMI Error", "Initializing"
-
+# AppStatus NamedTuple is removed, replaced by AppState.runtime
 
 CurveType = str
 FanTable = List[List[int]]
 
-# --- NEW: Define update block duration ---
-SLIDER_UPDATE_BLOCK_DURATION_MS = 1500 # Block updates for 1.5 seconds after user change
-# --- END NEW ---
+SLIDER_UPDATE_BLOCK_DURATION_MS = 1500
 
 class MainWindow(QMainWindow):
     """Main application window."""
 
-    # --- Signals to AppRunner/AppServices ---
+    # --- Signals to AppServices (via AppRunner) ---
     quit_requested = Signal()
-    curve_changed_signal = Signal(str, object)
+    # curve_changed_signal will be removed, panels will call app_services directly
     language_changed_signal = Signal(str)
     background_state_changed = Signal(bool)
-    window_geometry_changed = Signal(str) # Emits hex string of geometry
-    window_initialized_signal = Signal(int) # Emits HWND on first show
+    window_geometry_changed = Signal(str)
+    window_initialized_signal = Signal(int)
 
     def __init__(self,
                  app_runner: 'AppRunner',
-                 fan_control_vm: FanControlViewModel,
-                 battery_control_vm: BatteryControlViewModel,
-                 curve_control_vm: CurveControlViewModel,
+                 app_services: 'AppServices',
                  start_minimized: bool = False):
         super().__init__()
         self.app_runner = app_runner
+        self.app_services = app_services
         self.start_minimized = start_minimized
 
-        # --- ViewModel Instances ---
-        self.fan_control_vm = fan_control_vm
-        self.battery_control_vm = battery_control_vm
-        self.curve_control_vm = curve_control_vm
+        # --- ViewModel Instances Removed ---
 
         # --- Internal State ---
-        self.last_status: Optional[AppStatus] = None
+        self.last_state: Optional[AppState] = None
         self.tray_icon: Optional[QSystemTrayIcon] = None
         self._is_quitting: bool = False
         self._is_window_visible: bool = not start_minimized
@@ -175,7 +151,9 @@ class MainWindow(QMainWindow):
         curve_area_layout.setContentsMargins(15, 15, 15, 15)
         curve_area_layout.setSpacing(5)
 
-        self.curve_control_panel = CurveControlPanel(self.curve_control_vm, self)
+        # The old ViewModel instantiation for CurveControlPanel is now removed.
+        # self.curve_control_view_model = CurveControlViewModel(self.app_services)
+        self.curve_control_panel = CurveControlPanel(self.app_services, self)
         curve_area_layout.addWidget(self.curve_control_panel)
 
         self.curve_canvas = CurveCanvas(self)
@@ -194,10 +172,10 @@ class MainWindow(QMainWindow):
         fan_battery_layout = QVBoxLayout()
         fan_battery_layout.setSpacing(10)
 
-        self.fan_control_panel = FanControlPanel(self.fan_control_vm, self)
+        self.fan_control_panel = FanControlPanel(self.app_services, self)
         fan_battery_layout.addWidget(self.fan_control_panel)
 
-        self.battery_control_panel = BatteryControlPanel(self.battery_control_vm, self)
+        self.battery_control_panel = BatteryControlPanel(self.app_services, self)
         fan_battery_layout.addWidget(self.battery_control_panel)
 
         bottom_controls_layout.addLayout(fan_battery_layout, 1)
@@ -291,8 +269,11 @@ class MainWindow(QMainWindow):
         self.title_bar.maximize_button.clicked.connect(self._toggle_maximize)
         self.title_bar.close_button.clicked.connect(self.close)
 
-        # CurveControlViewModel -> CurveCanvas (UI-to-UI connection)
-        self.curve_control_vm.active_curve_type_updated.connect(self.curve_canvas.set_active_curve)
+        # --- Connect AppServices state changes to the main update slot ---
+        self.app_services.state_changed.connect(self.on_state_changed)
+
+        # --- Connect UI interactions to AppServices methods ---
+        # (This will be done as panels are refactored. For now, we remove old VM connections)
 
         # CurveCanvas -> MainWindow (for data changes and transient status)
         self.curve_canvas.point_dragged.connect(self.on_curve_point_dragged)
@@ -311,68 +292,42 @@ class MainWindow(QMainWindow):
 
     # --- Public Slots for AppRunner ---
 
-    @Slot(object) # Accepts AppStatus named tuple
-    def update_status_display(self, status: AppStatus):
-        """Updates all status labels and relevant controls based on AppStatus."""
-        self.last_status = status # Store for later use (e.g., redraw on show)
+    @Slot(object)
+    def on_state_changed(self, state: AppState):
+        """The single slot to receive all state updates from AppServices."""
+        self.last_state = state
 
         if not self._is_window_visible:
             return
 
-        # --- MODIFICATION: Delegate updates to panels ---
+        # Delegate state updates to each panel
         if self.status_info_panel:
-            # Pass relevant parts of AppStatus or the whole thing if StatusInfoPanel can handle it
-            status_info_data = {
-                'cpu_temp': status.cpu_temp, 'gpu_temp': status.gpu_temp,
-                'fan1_rpm': status.fan1_rpm, 'fan2_rpm': status.fan2_rpm,
-                'applied_fan_percentage': status.applied_fan_percentage,
-                'theoretical_target_percentage': status.theoretical_target_percentage,
-                'current_fan_mode': status.current_fan_mode,
-                'current_charge_policy': status.current_charge_policy,
-                'current_charge_threshold': status.current_charge_threshold,
-                'controller_status_message': status.controller_status_message
-            }
-            self.status_info_panel.update_status(status_info_data)
+            self.status_info_panel.update_state(state)
 
-        # FanControlPanel and BatteryControlPanel are now updated via their ViewModels.
-        # AppRunner directly calls ViewModel's update_X_from_status methods.
-        # ViewModels then emit signals that their respective Panels are connected to.
-        # So, MainWindow no longer needs to directly call set_X methods on these panels here.
+        if self.fan_control_panel:
+            self.fan_control_panel.update_state(state) # Fan panel needs more context
 
-        # Example (old code that is being removed):
-        # if self.fan_control_panel:
-        #     self.fan_control_panel.set_fan_mode(status.current_fan_mode)
-        #     self.fan_control_panel.set_fixed_speed(
-        #         status.applied_fan_percentage if status.current_fan_mode == "fixed" else self.fan_control_panel.manual_fan_speed_slider.value(),
-        #         status.applied_fan_percentage
-        #     )
-        # if self.battery_control_panel:
-        #     self.battery_control_panel.set_charge_policy(status.current_charge_policy or "standard")
-        #     self.battery_control_panel.set_charge_threshold(
-        #         status.current_charge_threshold if status.current_charge_policy == "custom" else self.battery_control_panel.charge_threshold_slider.value(),
-        #         status.current_charge_threshold
-        #     )
-        # --- END MODIFICATION ---
+        if self.battery_control_panel:
+            self.battery_control_panel.update_state(state) # So does battery panel
 
-        # Update Curve Indicators (still relevant for MainWindow to manage)
+        if self.curve_control_panel:
+            self.curve_control_panel.update_state(state)
+
+        # Update components owned by MainWindow
         if self.curve_canvas:
-            self.curve_canvas.update_temp_indicators(status.cpu_temp, status.gpu_temp)
+            self.curve_canvas.update_temp_indicators(state.runtime.cpu_temp, state.runtime.gpu_temp)
+            # Update curves if they have changed
+            # This logic will be refined when panels are refactored
+            active_profile = state.profiles.get(state.active_profile_name)
+            if active_profile:
+                 self.curve_canvas.update_plot(active_profile.cpu_fan_table, active_profile.gpu_fan_table)
 
-        # Update main status label (only if not showing a transient message)
+
         is_dragging = self.curve_canvas and self.curve_canvas._dragging_point_index is not None
         if not is_dragging and not self._is_showing_transient_status:
-            status_key = status.controller_status_message
-            # If the key is not an empty string, translate and display it. Otherwise, clear the label.
+            status_key = state.runtime.controller_status_message
             if self.title_bar:
-                if status_key:
-                    self.title_bar.status_label.setText(tr(status_key))
-                else:
-                    self.title_bar.status_label.setText("")
-
-
-    # --- REMOVED DEPRECATED METHODS ---
-    # _update_controls_from_status and update_control_enable_states are removed.
-    # Their logic is now handled by panels internally or by update_status_display delegating to panels.
+                self.title_bar.status_label.setText(tr(status_key) if status_key else "")
 
 
     @Slot(str, str)
@@ -386,78 +341,14 @@ class MainWindow(QMainWindow):
             self._set_transient_status(title)
 
 
-    @Slot(bool)
     def set_controls_enabled_state(self, enabled: bool):
-        """Globally enables or disables interactive controls by delegating to panels."""
-        if self.status_info_panel:
-            # StatusInfoPanel is mostly display, but might have interactive elements later
-            self.status_info_panel.set_panel_enabled(enabled) # Assumes StatusInfoPanel has this method
-
-        if self.curve_control_panel:
-            self.curve_control_panel.set_panel_enabled(enabled) # Assumes CurveControlPanel has this method
-
-        if self.fan_control_panel:
-            self.fan_control_panel.set_panel_enabled(enabled) # Assumes FanControlPanel has this method
-
-        if self.battery_control_panel:
-            self.battery_control_panel.set_panel_enabled(enabled) # Assumes BatteryControlPanel has this method
-
-        if self.title_bar:
-            self.title_bar.language_combo.setEnabled(enabled)
-            self.title_bar.minimize_button.setEnabled(enabled)
-            self.title_bar.maximize_button.setEnabled(enabled)
-        
-        if self.curve_canvas:
-            self.curve_canvas.setEnabled(enabled) # Canvas has a direct setEnabled
-
-        # If 'enabled' is True, panels will internally decide which of their sub-controls
-        # should be active based on their current mode/policy (e.g. manual fan slider
-        # only enabled if fan mode is 'fixed' AND global 'enabled' is True).
-        # If 'enabled' is False, panels should disable all their interactive elements.
-        # The old self.update_control_enable_states() is removed as panels handle this internally.
+        """This method will be removed. Panel enable state will be derived from AppState."""
+        # This method is now a NO-OP. The logic will be moved into each panel's
+        # update_state method, where it can react to the overall state.
+        pass
 
 
-    @Slot(object) # Accepts ProfileSettings dictionary (passed as object)
-    def apply_profile_to_ui(self, profile_settings_obj: Optional[object]):
-        """Updates the UI elements to reflect the given profile settings by delegating to panels."""
-        profile_settings = profile_settings_obj if isinstance(profile_settings_obj, dict) else None
-
-        if profile_settings is None:
-            profile_settings = DEFAULT_PROFILE_SETTINGS.copy()
-
-        # Fan Settings: FanControlPanel is updated via its ViewModel signals
-        # when AppRunner calls FanControlViewModel.apply_profile_settings.
-        # No direct call from MainWindow to FanControlPanel.apply_profile_settings is needed.
-
-        # Battery Settings: BatteryControlPanel is updated via its ViewModel signals
-        # when AppRunner calls BatteryControlViewModel.apply_profile_settings.
-        # No direct call from MainWindow to BatteryControlPanel.apply_profile_settings is needed.
-
-        # Curve Settings & Appearance (Canvas and related controls in CurveControlPanel)
-        if self.curve_canvas:
-            self.curve_canvas.blockSignals(True) # MainWindow manages canvas signal blocking for this
-            cpu_curve: FanTable = profile_settings.get("cpu_fan_table", DEFAULT_PROFILE_SETTINGS["cpu_fan_table"])
-            gpu_curve: FanTable = profile_settings.get("gpu_fan_table", DEFAULT_PROFILE_SETTINGS["gpu_fan_table"])
-            self.curve_canvas.apply_appearance_settings(profile_settings)
-            self.curve_canvas.update_plot(cpu_curve, gpu_curve)
-            self.curve_canvas.blockSignals(False)
-
-        if self.curve_control_panel:
-            # Active profile button indication in CurveControlPanel is updated
-            # via CurveControlViewModel.active_profile_updated signal,
-            # which AppRunner should trigger by updating the ViewModel.
-            # Start on boot is a global setting, updated by AppRunner via CurveControlViewModel.
-            pass
-
-        # Settings Panel (e.g. Language) - Language is global, not typically per-profile.
-        # If SettingsPanel had per-profile settings, it would also need an apply_profile_settings call.
-
-        # Update GUI update interval is now handled by AppServices when a profile is activated.
-        # MainWindow no longer needs to manage this state.
-
-        # The old self.update_control_enable_states() call is removed.
-        # Panels manage their own enable states based on the applied settings.
-        # Global enable/disable (e.g., WMI error) is handled by set_controls_enabled_state.
+    # apply_profile_to_ui is removed. Its logic is now part of on_state_changed.
 
     # Removed update_profile_button_name.
     # This is now handled by CurveControlViewModel emitting profile_renamed_locally,
@@ -488,17 +379,17 @@ class MainWindow(QMainWindow):
         
         self._transient_status_timer.start(duration_ms)
 
-    @Slot(str, int, float, float) # curve_type, index, new_temp, new_speed
+    @Slot(str, int, float, float)
     def on_curve_point_dragged(self, curve_type: str, index: int, new_temp: float, new_speed: float):
         """Updates status bar while dragging a curve point (signal from CurveCanvas)."""
         self.set_transient_status(tr("curve_point_tooltip", temp=int(new_temp), speed=int(new_speed)))
 
-    @Slot(str) # curve_type
+    @Slot(str)
     def on_curve_modified(self, curve_type: str):
-        """Emits signal when a curve is modified (signal from CurveCanvas)."""
+        """Calls AppServices when a curve is modified (signal from CurveCanvas)."""
         if self.curve_canvas:
             final_table = self.curve_canvas.get_curve_data(curve_type)
-            self.curve_changed_signal.emit(curve_type, final_table)
+            self.app_services.set_curve_data(curve_type, final_table)
             self.set_transient_status(tr("saving_config"))
 
     # Removed _handle_profile_save_request_from_panel.
@@ -524,8 +415,8 @@ class MainWindow(QMainWindow):
         """Clears the transient status message and restores the permanent one."""
         self._is_showing_transient_status = False
         # Trigger a refresh of the status display to show the correct permanent status
-        if self.last_status:
-            self.update_status_display(self.last_status)
+        if self.last_state:
+            self.on_state_changed(self.last_state)
         elif self.title_bar:
             # If there's no status, clear the label
             self.title_bar.status_label.setText("")
@@ -573,13 +464,13 @@ class MainWindow(QMainWindow):
                     print("Warning: Could not retranslate all tray menu items.", file=sys.stderr)
         
         # After all panels and canvas have retranslated their static text,
-        # if we have a last known status, tell panels to re-render dynamic data.
-        # The `update_status_display` method already delegates to panels,
+        # if we have a last known state, tell panels to re-render dynamic data.
+        # The `on_state_changed` method already delegates to panels,
         # and those panel methods should use `tr()` for units etc.
-        if self.last_status:
-            self.update_status_display(self.last_status)
+        if self.last_state:
+            self.on_state_changed(self.last_state)
         else:
-            # If there's no status yet, panels should show their initial translated placeholder texts.
+            # If there's no state yet, panels should show their initial translated placeholder texts.
             # This should be handled by each panel's retranslate_ui or their init.
             # MainWindow might set an initial global status message via StatusInfoPanel.
             if self.title_bar:
@@ -621,16 +512,15 @@ class MainWindow(QMainWindow):
             print("Received quit command from shared memory. Initiating shutdown.")
             self._request_quit()
         elif command == COMMAND_RELOAD_AND_SHOW:
-            print("Received reload and show command. Reloading config and ensuring visibility.")
-            self.app_runner.reload_and_apply_config()
-            # The secondary instance is now responsible for bringing the window to the front.
-            # This instance's only job is to make sure the window is visible if it was
-            # hidden in the system tray.
-            if not self.isVisible():
-                self.show()
+            print("Received show command. Ensuring window visibility.")
+            # With the new state-centric architecture, reloading config from disk is unsafe
+            # as it would overwrite the in-memory state. The primary instance is the
+            # single source of truth. We just need to show the window.
+            if not self.isVisible() or self.isMinimized():
+                self.toggle_window_visibility()
         elif command == COMMAND_RELOAD_ONLY:
-            print("Received reload-only command. Reloading config.")
-            self.app_runner.reload_and_apply_config()
+            # This command is now deprecated as reloading from disk is unsafe.
+            print("Received reload-only command (deprecated). Ignoring.")
         else:
             print(f"Warning: Received unknown command '{command}' from shared memory.")
 
@@ -658,8 +548,8 @@ class MainWindow(QMainWindow):
 
         if not self._is_window_visible:
             self._is_window_visible = True
-            if self.last_status:
-                self.update_status_display(self.last_status)
+            if self.last_state:
+                self.on_state_changed(self.last_state)
             self.background_state_changed.emit(False)
         
         super().showEvent(event)

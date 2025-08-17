@@ -97,34 +97,10 @@ class FanController:
             self._current_mode = FAN_MODE_UNKNOWN # Revert state on failure
             self._applied_percentage = INIT_APPLIED_PERCENTAGE
             return False
-
-    def set_mode_auto(self) -> bool:
-        """
-        Sets the fan mode back to automatic (BIOS/EC control).
-
-        Note: This implementation assumes setting a low fixed speed effectively
-              yields control back, as there isn't a direct "SetAuto" WMI call
-              that reliably works across all Gigabyte models for *both* fans
-              simultaneously after manual override. Setting 0% is a common way
-              to let the EC take over again.
-
-        Returns:
-            True if the operation likely succeeded, False otherwise.
-        """
-        # Use set_mode_fixed with the defined equivalent speed for auto mode.
-        if self.set_mode_fixed(FAN_MODE_AUTO_EQUIVALENT_SPEED):
-             self._current_mode = FAN_MODE_AUTO # Logically, we requested auto mode
-             # _applied_percentage is already set by set_mode_fixed()
-             return True
-        else:
-             print("Error: Failed to set fans to 0% to attempt enabling auto mode.", file=sys.stderr)
-             self._current_mode = FAN_MODE_UNKNOWN
-             self._applied_percentage = INIT_APPLIED_PERCENTAGE
-             return False
-
-    def apply_speed_percent(self, percentage: int) -> bool:
-        """
-        Applies a fan speed percentage. Used internally by the auto-mode logic.
+    
+        def apply_speed_percent(self, percentage: int) -> bool:
+            """
+            Applies a fan speed percentage. Used by the auto-temperature controller.
         Does NOT apply the "below 10% is 0%" rule here.
 
         Args:

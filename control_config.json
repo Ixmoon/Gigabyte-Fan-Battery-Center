@@ -21,7 +21,7 @@
                 ],
                 [
                     85,
-                    24
+                    27
                 ],
                 [
                     87,
@@ -119,15 +119,19 @@
                 ],
                 [
                     85,
-                    31
+                    27
                 ],
                 [
                     87,
                     39
                 ],
                 [
-                    88,
-                    45
+                    89,
+                    48
+                ],
+                [
+                    91,
+                    55
                 ],
                 [
                     92,
@@ -173,7 +177,7 @@
                 ]
             ],
             "fan_mode": "auto",
-            "fixed_fan_speed": 40,
+            "fixed_fan_speed": 50,
             "charge_policy": "custom",
             "charge_threshold": 85,
             "AUTO_MODE_CYCLE_DURATION_S": 3.0,
