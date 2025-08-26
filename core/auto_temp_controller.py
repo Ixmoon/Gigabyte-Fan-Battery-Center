@@ -8,9 +8,9 @@ temperature reads, and fan speed application.
 
 from typing import List, Optional, Dict, cast
 import sys
+import time
 
-# --- NEW: Import QTimer and dependencies ---
-from gui.qt import QObject, QTimer, Slot
+from gui.qt import QObject, Slot, Signal
 
 # --- MODIFICATION: Import dependencies directly ---
 from .wmi_interface import WMIInterface
@@ -30,14 +30,15 @@ from config.settings import (
 # Type Hinting
 FanTable = List[List[int]] # List of [temp, speed] pairs
 
-# --- NEW: Inherit from QObject for timer ---
 class AutoTemperatureController(QObject):
-# --- END NEW ---
     """
     Calculates target fan speed based on temperature and fan curves,
     and manages the complete auto-mode control loop including timing,
     temperature reads, and fan speed application via injected controllers.
     """
+    # Signal to broadcast fresh sensor data after an update cycle.
+    # The dict will contain keys like 'cpu_temp', 'gpu_temp', etc.
+    sensors_updated = Signal(dict)
 
     # --- MODIFIED: Add dependencies to __init__ ---
     def __init__(self, wmi_interface: WMIInterface, fan_manager: FanManager):
@@ -63,11 +64,6 @@ class AutoTemperatureController(QObject):
         self._last_theoretical_target: int = INIT_APPLIED_PERCENTAGE
         self._current_adjustment_step_size: Optional[int] = None
         self._speed_at_target_set: int = INIT_APPLIED_PERCENTAGE
-
-        # --- NEW: Internal Timer ---
-        self._adjustment_timer = QTimer(self)
-        self._adjustment_timer.timeout.connect(self._perform_adjustment_step)
-        # --- END NEW ---
 
     # --- NEW: Public method to get last calculated target ---
     def get_last_theoretical_target(self) -> int:
@@ -95,14 +91,7 @@ class AutoTemperatureController(QObject):
         self._min_step = max(0, self._min_step)
         self._max_step = max(self._min_step, self._max_step)
 
-        # Reconfigure timer if interval changed
-        if new_interval_s != self._adjustment_interval_s:
-            self._adjustment_interval_s = new_interval_s
-            if self._adjustment_timer.isActive():
-                self._adjustment_timer.stop()
-                interval_ms = max(100, int(self._adjustment_interval_s * 1000))
-                self._adjustment_timer.start(interval_ms)
-
+        self._adjustment_interval_s = new_interval_s
         # Reset step size when settings change
         self._current_adjustment_step_size = None
 
@@ -113,22 +102,6 @@ class AutoTemperatureController(QObject):
         self._last_theoretical_target = INIT_APPLIED_PERCENTAGE
         self._current_adjustment_step_size = None
         self._speed_at_target_set = INIT_APPLIED_PERCENTAGE
-
-
-    # --- NEW: Start/Stop methods for the auto control loop ---
-    def start_auto_mode(self):
-        """Starts the internal timer for automatic fan adjustments."""
-        if not self._adjustment_timer.isActive():
-            self.reset_state() # Reset state when starting
-            interval_ms = max(100, int(self._adjustment_interval_s * 1000))
-            self._adjustment_timer.start(interval_ms)
-
-    def stop_auto_mode(self):
-        """Stops the internal timer for automatic fan adjustments."""
-        if self._adjustment_timer.isActive():
-            self._adjustment_timer.stop()
-        self.reset_state() # Reset state when stopping
-    # --- END NEW ---
 
 
     def _validate_and_sort(self, table: FanTable) -> FanTable:
@@ -212,16 +185,14 @@ class AutoTemperatureController(QObject):
         step_size = max(self._min_step, min(self._max_step, step_size))
         return max(1, step_size)
 
-    def _update_active_target(self, current_applied_speed: int) -> bool:
+    def _update_active_target(self, current_applied_speed: int, cpu_temp: float, gpu_temp: float) -> bool:
         """
-        Reads temperatures, calculates the theoretical target, applies hysteresis,
+        Calculates the theoretical target from pre-read temperatures, applies hysteresis,
         and updates the internal active target speed if necessary.
 
         Returns:
             bool: True if the active target was changed, False otherwise.
         """
-        cpu_temp = self._wmi.get_cpu_temperature()
-        gpu_temp = self._wmi.get_gpu_temperature()
         theoretical_target = self._calculate_theoretical_target(cpu_temp, gpu_temp)
         self._last_theoretical_target = theoretical_target
 
@@ -270,19 +241,28 @@ class AutoTemperatureController(QObject):
         return next_speed if next_speed != current_applied_speed else None
 
     @Slot()
-    def _perform_adjustment_step(self):
+    def perform_adjustment_step(self):
         """
         Internal slot called by the timer. Orchestrates the fan adjustment logic.
         """
         # Use the public property of the WMI interface
         if not self._wmi.is_running:
-            self.stop_auto_mode()
             return
+
+        # --- Read only temperature data ---
+        cpu_temp = self._wmi.get_cpu_temperature()
+        gpu_temp = self._wmi.get_gpu_temperature()
+        
+        # Broadcast the fresh sensor data for the UI or other services to use
+        self.sensors_updated.emit({
+            'cpu_temp': cpu_temp,
+            'gpu_temp': gpu_temp
+        })
 
         current_applied_speed = self._fan.applied_percentage
 
         # 1. Update the active target based on current temperatures and hysteresis.
-        self._update_active_target(current_applied_speed)
+        self._update_active_target(current_applied_speed, cpu_temp, gpu_temp)
 
         # 2. Calculate the next speed step towards the active target.
         speed_to_apply = self._calculate_next_speed(current_applied_speed)

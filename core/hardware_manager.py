@@ -87,6 +87,10 @@ class BatteryManager:
             print(f"Failed to get battery status: {e}", file=sys.stderr)
             return None
 
+    def get_policy_name_from_code(self, policy_code: int) -> str:
+        """Translates a numeric policy code to its string representation."""
+        return BATTERY_CODE_POLICIES.get(policy_code, "err")
+
 
 class FanManager:
     """Manages all direct fan control operations via WMI."""

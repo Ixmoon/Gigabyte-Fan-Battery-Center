@@ -9,7 +9,6 @@ creates the main application runner, and starts the Qt event loop.
 
 import sys
 import os
-import json
 import traceback
 import atexit
 import ctypes # For admin check message box fallback
@@ -38,7 +37,7 @@ except Exception as e:
     print(f"Fatal: Could not change working directory to '{BASE_DIR}'. External files will not be found. Error: {e}", file=sys.stderr)
 
 # --- Import Project Modules ---
-from gui.qt import QApplication, QMessageBox, QCoreApplication, QTimer, QMetaObject, Qt, QObject, Slot
+from gui.qt import QApplication, QMessageBox, QCoreApplication
 
 from config.settings import (
     APP_NAME, APP_ORGANIZATION_NAME, APP_INTERNAL_NAME, STARTUP_ARG_MINIMIZED,
@@ -58,137 +57,13 @@ from core.app_services import AppServices
 from gui.main_window import MainWindow
 
 # --- Global Variables ---
-app_services_instance: Optional[AppServices] = None
-app_runner_instance: Optional['AppRunner'] = None
-app_instance: Optional[QApplication] = None
+# These are now managed within the main function's scope
+# and passed to the cleanup function directly.
+_app_services_for_cleanup: Optional[AppServices] = None
 
 # --- Matplotlib Font Setup (Now removed as it's a dependency we got rid of) ---
 # This section is intentionally left blank.
 
-# ==============================================================================
-# Configuration Management
-# ==============================================================================
-
-def load_config(path: str) -> Dict[str, Any]:
-    """Loads the configuration file from the given path."""
-    try:
-        with open(path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        print(f"Warning: Could not load config file '{path}'. Using default values. Error: {e}", file=sys.stderr)
-        return {} # Return empty dict to use defaults
-
-def save_config(path: str, data: Dict[str, Any]):
-    """Saves the configuration data to the given path."""
-    try:
-        with open(path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=4)
-        print(f"Configuration saved to '{path}'")
-    except Exception as e:
-        print(f"Error: Could not save config file to '{path}'. Error: {e}", file=sys.stderr)
-
-# ==============================================================================
-# AppRunner Class
-# ==============================================================================
-
-class AppRunner(QObject):
-    """
-    Orchestrates the UI layer (MainWindow) and connects it to the backend
-    services provided by AppServices. It also manages config saving.
-    """
-
-    def __init__(self, app_services: AppServices, start_minimized: bool):
-        super().__init__()
-        self.app_services = app_services
-        self.start_minimized = start_minimized
-        self._is_shutting_down = False
-        self._is_in_background = start_minimized
-        self.config_path = os.path.join(BASE_DIR, CONFIG_FILE_NAME)
-
-        # --- Instantiate GUI (now passing AppServices directly) ---
-        self.main_window = MainWindow(
-            app_runner=self,
-            app_services=self.app_services,
-            start_minimized=self.start_minimized
-        )
-
-        # --- Connect Signals ---
-        self._connect_signals()
-
-        # --- Initial UI State Sync ---
-        self.load_window_geometry()
-
-    def _connect_signals(self):
-        """Connect signals between AppServices and MainWindow."""
-        # --- AppServices to AppRunner ---
-        self.app_services.config_save_requested.connect(self._save_config_on_request)
-
-        # --- MainWindow to AppRunner ---
-        self.main_window.quit_requested.connect(self.shutdown)
-        self.main_window.language_changed_signal.connect(self.handle_language_change)
-        self.main_window.background_state_changed.connect(self.set_background_state)
-        self.main_window.window_geometry_changed.connect(self.save_window_geometry)
-        self.main_window.window_initialized_signal.connect(self._handle_window_initialized)
-
-    @Slot(dict)
-    def _save_config_on_request(self, config_data: Dict[str, Any]):
-        """Saves the configuration when requested by AppServices."""
-        save_config(self.config_path, config_data)
-
-    @Slot(int)
-    def _handle_window_initialized(self, hwnd: int):
-        """Handles writing the main window HWND to shared memory for single instance control."""
-        if os.name == 'nt' and is_primary():
-            if IsWindow(hwnd):
-                print(f"Main window HWND obtained via signal: {hwnd}")
-                write_hwnd_to_shared_memory(hwnd)
-            else:
-                print(f"Warning: Received invalid HWND ({hwnd}) from main window.", file=sys.stderr)
-
-    def save_window_geometry(self, geometry_hex: str):
-        """Saves the window geometry to the config."""
-        # Convert hex string to bytes for saving in state
-        self.app_services.set_window_geometry(geometry_hex.encode('utf-8'))
-
-    def load_window_geometry(self):
-        """Loads and applies window geometry from the config."""
-        geometry_bytes = self.app_services.state.window_geometry
-        if geometry_bytes:
-            # Decode bytes back to hex string for the UI method
-            self.main_window.restore_geometry_from_hex(geometry_bytes.decode('utf-8'))
-
-    @Slot(str)
-    def handle_language_change(self, lang_code: str):
-        """Handles language change, saves it, and retranstales the UI."""
-        set_language(lang_code)
-        self.app_services.set_language(lang_code)
-        self.main_window.retranslate_ui()
-
-    @Slot(bool)
-    def set_background_state(self, is_background: bool):
-        """Handles transitions between foreground and background operation."""
-        if self._is_shutting_down or self._is_in_background == is_background:
-            return
-        self._is_in_background = is_background
-        # Use the new public method to control the service's update loop
-        self.app_services.set_active_updates(not is_background)
-
-    @Slot()
-    def shutdown(self):
-        """Initiates a graceful shutdown via AppServices and quits the app."""
-        if self._is_shutting_down:
-            return
-        self._is_shutting_down = True
-        print("AppRunner: Initiating shutdown...")
-
-        # AppServices handles the core component shutdown
-        self.app_services.shutdown()
-
-        # Quit the application
-        app = QApplication.instance()
-        if app:
-            print("AppRunner: Quitting QApplication.")
-            QTimer.singleShot(0, app.quit)
 
 # --- Exception Handling Hook ---
 def handle_exception(exc_type, exc_value, exc_traceback):
@@ -223,20 +98,20 @@ def handle_exception(exc_type, exc_value, exc_traceback):
 _cleanup_called = False
 def perform_cleanup():
     """Performs application cleanup actions on exit."""
-    global app_services_instance, _cleanup_called
+    global _app_services_for_cleanup, _cleanup_called
     if _cleanup_called:
         return
     _cleanup_called = True
     print("Performing cleanup...")
 
     # 1. Shutdown AppServices (handles all backend cleanup)
-    if app_services_instance:
+    if _app_services_for_cleanup:
         print("Shutting down AppServices...")
         try:
-            app_services_instance.shutdown()
+            _app_services_for_cleanup.shutdown()
         except Exception as e:
             print(f"Error during AppServices shutdown: {e}", file=sys.stderr)
-        app_services_instance = None
+        _app_services_for_cleanup = None
         print("AppServices shutdown completed.")
     else:
         print("AppServices instance not found for shutdown.")
@@ -251,7 +126,7 @@ def perform_cleanup():
 # --- Main Execution ---
 def main():
     """Main application function."""
-    global app_services_instance, app_runner_instance, app_instance
+    global _app_services_for_cleanup
 
     sys.excepthook = handle_exception
     atexit.register(perform_cleanup)
@@ -270,34 +145,34 @@ def main():
 
     QCoreApplication.setOrganizationName(APP_ORGANIZATION_NAME)
     QCoreApplication.setApplicationName(APP_INTERNAL_NAME)
-    app_instance = QApplication(sys.argv)
-    app_instance.setQuitOnLastWindowClosed(False)
-    app_instance.aboutToQuit.connect(perform_cleanup)
+    app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
+    app.aboutToQuit.connect(perform_cleanup)
 
-    # --- Load Configuration ---
-    config_path = os.path.join(BASE_DIR, CONFIG_FILE_NAME)
-    config_data = load_config(config_path)
+    # --- Initialize Layers ---
+    app_services = AppServices(base_dir=BASE_DIR)
+    _app_services_for_cleanup = app_services
 
-    # --- Initialize Service Layer ---
-    app_services_instance = AppServices(config_data=config_data, base_dir=BASE_DIR)
-    if not app_services_instance.initialize():
-        QMessageBox.critical(None, tr("initialization_error_title"), tr("initialization_error_msg"))
-        sys.exit(1)
-
-    # --- Initialize UI Layer (AppRunner) ---
     start_minimized = STARTUP_ARG_MINIMIZED in sys.argv
     try:
-        # Inject the services into the UI orchestrator
-        app_runner_instance = AppRunner(app_services_instance, start_minimized)
+        # --- Synchronous Initialization ---
+        # The new model initializes WMI and applies settings before showing the window.
+        if not app_services.initialize_and_apply_settings():
+            # If WMI initialization fails, show an error and exit.
+            # The error message is set within AppServices.
+            error_title = tr("wmi_init_error_title")
+            error_text = app_services.state.controller_status_message
+            QMessageBox.critical(None, error_title, error_text)
+            sys.exit(1)
+
+        main_window = MainWindow(app_services, start_minimized)
     except Exception as init_error:
         handle_exception(type(init_error), init_error, init_error.__traceback__)
         sys.exit(1)
 
     # --- Start the Qt Event Loop ---
-    # HWND is now written to shared memory via a signal from MainWindow to AppRunner,
-    # making the logic more robust and removing the need for a timer here.
     print(f"Starting {APP_NAME} event loop...")
-    exit_code = app_instance.exec()
+    exit_code = app.exec()
     print(f"Application event loop finished with exit code: {exit_code}")
     sys.exit(exit_code)
 

@@ -2,29 +2,29 @@
     "language": "en",
     "start_on_boot": false,
     "active_profile_name": "Config 1",
-    "window_geometry": null,
+    "window_geometry": "01d9d0cb00030000000003ba000001b3000008370000046e000003ba000001b3000008370000046e00000000000000000a00000003ba000001b3000008370000046e",
     "profiles": {
         "Config 1": {
             "cpu_fan_table": [
                 [
-                    50,
-                    0
+                    31,
+                    3
                 ],
                 [
-                    60,
-                    15
+                    37,
+                    33
                 ],
                 [
-                    70,
-                    25
+                    56,
+                    55
                 ],
                 [
                     80,
-                    40
+                    67
                 ],
                 [
                     85,
-                    60
+                    67
                 ],
                 [
                     90,
@@ -65,10 +65,10 @@
                     100
                 ]
             ],
-            "fan_mode": "auto",
-            "custom_fan_speed": 30,
+            "fan_mode": "custom",
+            "custom_fan_speed": 29,
             "battery_charge_policy": "custom",
-            "battery_charge_threshold": 90,
+            "battery_charge_threshold": 80,
             "fan_adjustment_interval_s": 1.5,
             "fan_hysteresis_percent": 5,
             "min_adjustment_step": 1,

@@ -18,8 +18,18 @@ QPushButton#windowControlButton_close:pressed { background-color: #A32517; }
 QLabel { color: #C0C0C0; padding-top: 2px; }
 QLabel#cpu_temp_value, QLabel#gpu_temp_value, QLabel#fan1_rpm_value,
 QLabel#fan2_rpm_value, QLabel#applied_target_value, QLabel#battery_info_value,
-QLabel#manual_speed_value_label, QLabel#charge_threshold_value_label {
+QLabel#custom_speed_value_label, QLabel#charge_threshold_value_label {
     color: #FFFFFF; font-weight: bold;
+}
+
+/* Disabled state for the special white labels */
+QLabel#custom_speed_value_label:disabled,
+QLabel#charge_threshold_value_label:disabled {
+    color: #888888;
+}
+
+QLabel:disabled {
+    color: #686868; /* General disabled color for other labels */
 }
 QLabel#status_label { color: #FFA500; font-style: italic; } /* Orange for status */
 QPushButton {

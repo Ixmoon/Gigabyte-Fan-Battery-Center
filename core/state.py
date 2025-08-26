@@ -79,7 +79,7 @@ class AppState:
     start_on_boot: bool = False
     active_profile_name: str = "Config 1"
     profiles: Dict[str, ProfileState] = field(default_factory=dict)
-    window_geometry: Optional[bytes] = None # For storing QMainWindow geometry
+    window_geometry: Optional[str] = None # For storing QMainWindow geometry
 
     # --- Transient Runtime State (Flattened) ---
     cpu_temp: float = 0.0

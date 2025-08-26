@@ -40,8 +40,8 @@ from config.settings import (
     MIN_CHARGE_PERCENT, MAX_CHARGE_PERCENT,
     # --- NEW: Import action constants ---
     WMI_ACTION_GET_CPU_TEMP, WMI_ACTION_GET_GPU_TEMP, WMI_ACTION_GET_RPM,
-    WMI_ACTION_GET_CHARGE_POLICY, WMI_ACTION_GET_CHARGE_STOP,
-    WMI_ACTION_CONFIGURE_CUSTOM_FAN, WMI_ACTION_CONFIGURE_BIOS_FAN,
+    WMI_ACTION_GET_CHARGE_POLICY, WMI_ACTION_GET_CHARGE_STOP, WMI_ACTION_GET_ALL_SENSORS,
+    WMI_ACTION_GET_NON_TEMP_SENSORS, WMI_ACTION_CONFIGURE_CUSTOM_FAN, WMI_ACTION_CONFIGURE_BIOS_FAN,
     WMI_ACTION_SET_FAN_SPEED_RAW, WMI_ACTION_SET_CHARGE_POLICY, WMI_ACTION_SET_CHARGE_STOP
 )
 
@@ -100,6 +100,8 @@ class WMIWorker(threading.Thread):
             WMI_ACTION_GET_RPM: self._handle_get_rpm,
             WMI_ACTION_GET_CHARGE_POLICY: self._handle_get_charge_policy,
             WMI_ACTION_GET_CHARGE_STOP: self._handle_get_charge_stop,
+            WMI_ACTION_GET_ALL_SENSORS: self._handle_get_all_sensors,
+            WMI_ACTION_GET_NON_TEMP_SENSORS: self._handle_get_non_temp_sensors,
             WMI_ACTION_CONFIGURE_CUSTOM_FAN: self._handle_configure_custom_fan,
             WMI_ACTION_CONFIGURE_BIOS_FAN: self._handle_configure_bios_fan,
             WMI_ACTION_SET_FAN_SPEED_RAW: self._handle_set_fan_speed_raw,
@@ -282,6 +284,26 @@ class WMIWorker(threading.Thread):
         raw_res = self._execute_wmi_method(self._wmi_get_obj, WMI_GET_CHARGE_STOP)
         return self._validate_int(self._parse_wmi_result(raw_res), CHARGE_THRESHOLD_READ_ERROR_VALUE)
 
+    def _handle_get_all_sensors(self, params: Dict) -> Dict[str, Any]:
+        """Handles the combined sensor read action in a single operation."""
+        return {
+            'cpu_temp': self._handle_get_cpu_temp({}),
+            'gpu_temp': self._handle_get_gpu_temp({}),
+            'fan1_rpm': self._handle_get_rpm({"method_name": WMI_GET_RPM1}),
+            'fan2_rpm': self._handle_get_rpm({"method_name": WMI_GET_RPM2}),
+            'charge_policy': self._handle_get_charge_policy({}),
+            'charge_threshold': self._handle_get_charge_stop({})
+        }
+
+    def _handle_get_non_temp_sensors(self, params: Dict) -> Dict[str, Any]:
+        """Handles reading sensors except for temperatures."""
+        return {
+            'fan1_rpm': self._handle_get_rpm({"method_name": WMI_GET_RPM1}),
+            'fan2_rpm': self._handle_get_rpm({"method_name": WMI_GET_RPM2}),
+            'charge_policy': self._handle_get_charge_policy({}),
+            'charge_threshold': self._handle_get_charge_stop({})
+        }
+
     def _handle_configure_custom_fan(self, params: Dict) -> bool:
         self._execute_wmi_method(self._wmi_set_obj, WMI_SET_CUSTOM_FAN_STATUS, Data=1.0)
         self._execute_wmi_method(self._wmi_set_obj, WMI_SET_SUPER_QUIET, Data=0.0)
@@ -292,7 +314,6 @@ class WMIWorker(threading.Thread):
     def _handle_configure_bios_fan(self, params: Dict) -> bool:
         self._execute_wmi_method(self._wmi_set_obj, WMI_SET_AUTO_FAN_STATUS, Data=1.0)
         self._execute_wmi_method(self._wmi_set_obj, WMI_SET_CUSTOM_FAN_STATUS, Data=0.0)
-        # We might not need to touch other flags like SUPER_QUIET here
         return True
 
     def _handle_set_fan_speed_raw(self, params: Dict) -> bool:
@@ -469,6 +490,33 @@ class WMIInterface:
             return self._execute_sync(WMI_ACTION_GET_CHARGE_STOP)
         except WMIError:
             return CHARGE_THRESHOLD_READ_ERROR_VALUE
+
+    def get_all_sensors(self) -> Dict[str, Any]:
+        """Gets all sensor readings in a single, efficient WMI call."""
+        try:
+            return self._execute_sync(WMI_ACTION_GET_ALL_SENSORS)
+        except WMIError:
+            # On failure, return a dictionary with default error values
+            return {
+                'cpu_temp': TEMP_READ_ERROR_VALUE,
+                'gpu_temp': TEMP_READ_ERROR_VALUE,
+                'fan1_rpm': RPM_READ_ERROR_VALUE,
+                'fan2_rpm': RPM_READ_ERROR_VALUE,
+                'charge_policy': CHARGE_POLICY_READ_ERROR_VALUE,
+                'charge_threshold': CHARGE_THRESHOLD_READ_ERROR_VALUE
+            }
+
+    def get_non_temp_sensors(self) -> Dict[str, Any]:
+        """Gets all non-temperature sensor readings in a single call."""
+        try:
+            return self._execute_sync(WMI_ACTION_GET_NON_TEMP_SENSORS)
+        except WMIError:
+            return {
+                'fan1_rpm': RPM_READ_ERROR_VALUE,
+                'fan2_rpm': RPM_READ_ERROR_VALUE,
+                'charge_policy': CHARGE_POLICY_READ_ERROR_VALUE,
+                'charge_threshold': CHARGE_THRESHOLD_READ_ERROR_VALUE
+            }
 
     def configure_custom_fan_control(self) -> bool:
         """Sets the necessary WMI flags to enable custom (app-controlled) fan speed."""
