@@ -17,7 +17,6 @@ from .BatteryControlPanel import BatteryControlPanel
 from .custom_title_bar import CustomTitleBar
 from core.state import AppState, ProfileState
 from tools.localization import tr, set_language
-from config.settings import APP_ICON_NAME
 from core.app_services import AppServices
 from core.profile_manager import ProfileManager
 from core.settings_manager import SettingsManager
@@ -125,7 +124,7 @@ class MainWindow(QMainWindow):
     def init_tray_icon(self):
         if not QSystemTrayIcon.isSystemTrayAvailable(): return
         self.tray_icon = QSystemTrayIcon(self)
-        icon_path = os.path.join(self.app_services.base_dir, APP_ICON_NAME)
+        icon_path = self.state.paths.app_icon
         icon = QIcon(icon_path) if os.path.exists(icon_path) else self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
         self.setWindowIcon(icon)
         self.tray_icon.setIcon(icon)
@@ -143,7 +142,7 @@ class MainWindow(QMainWindow):
             self.tray_icon.show()
 
     def apply_styles(self):
-        style_path = os.path.join(os.path.dirname(__file__), "style.qss")
+        style_path = self.state.paths.style_qss
         if os.path.exists(style_path):
             with open(style_path, "r", encoding="utf-8") as f:
                 self.setStyleSheet(f.read())

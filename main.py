@@ -13,16 +13,19 @@ from typing import Optional
 # --- 早期设置: 定义基础目录 (健壮的方法) ---
 # 该逻辑能正确处理脚本、独立可执行文件和单文件模式。
 try:
-    if getattr(sys, 'frozen', False):
-        # 打包模式 (Nuitka/PyInstaller)
-        # sys.argv[0] 是指向原始可执行文件的可靠路径
-        BASE_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
+    if os.name == 'nt':
+        # 使用 Windows API 获取可执行文件路径，这是最可靠的方法
+        buffer = ctypes.create_unicode_buffer(2048)
+        ctypes.windll.kernel32.GetModuleFileNameW(None, buffer, len(buffer))
+        BASE_DIR = os.path.dirname(buffer.value)
     else:
-        # 脚本模式
-        # __file__ 是当前脚本的路径
-        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        # 为非 Windows 系统提供回退
+        if getattr(sys, 'frozen', False):
+            BASE_DIR = os.path.dirname(sys.executable)
+        else:
+            BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 except Exception:
-    # 在 __file__ 或 sys.argv[0] 可能缺失的环境中的回退方案
+    # 最终回退方案
     BASE_DIR = os.getcwd()
 
 # --- 更改工作目录 ---
@@ -36,8 +39,7 @@ except Exception as e:
 from gui.qt import QApplication, QMessageBox, QCoreApplication
 
 from config.settings import (
-    APP_NAME, APP_ORGANIZATION_NAME, APP_INTERNAL_NAME, STARTUP_ARG_MINIMIZED,
-    LANGUAGES_JSON_NAME
+    APP_NAME, APP_ORGANIZATION_NAME, APP_INTERNAL_NAME, STARTUP_ARG_MINIMIZED
 )
 from tools.localization import load_translations, tr, set_language, _translations_loaded
 from tools.system_utils import is_admin, run_as_admin
@@ -46,6 +48,7 @@ from tools.single_instance import (
 )
 from core.app_services import AppServices
 from core.state import AppState
+from core.path_manager import PathManager
 from core.profile_manager import ProfileManager
 from core.settings_manager import SettingsManager
 from gui.main_window import MainWindow
@@ -118,11 +121,14 @@ def main():
     sys.excepthook = handle_exception
     atexit.register(perform_cleanup)
 
-    # 加载翻译文件
-    languages_json_path = os.path.join(BASE_DIR, LANGUAGES_JSON_NAME)
-    load_translations(languages_json_path)
+    # --- 初始化核心服务 ---
+    # 1. 创建路径管理器，这是所有路径的唯一来源
+    path_manager = PathManager(base_dir=BASE_DIR)
 
-    # Windows平台特定检查
+    # 2. 加载翻译文件
+    load_translations(path_manager.languages)
+
+    # 3. Windows平台特定检查
     if os.name == 'nt':
         # 1. 检查管理员权限
         if not is_admin():
@@ -147,12 +153,12 @@ def main():
     try:
         # 【修复】调整了初始化顺序以解决启动时控制无效的问题
         # 1. 创建状态和管理器实例
-        app_state = AppState()
-        profile_manager = ProfileManager(base_dir=BASE_DIR, app_state=app_state)
-        settings_manager = SettingsManager(app_state=app_state, profile_manager=profile_manager, base_dir=BASE_DIR)
+        app_state = AppState(path_manager=path_manager)
+        profile_manager = ProfileManager(app_state=app_state)
+        settings_manager = SettingsManager(app_state=app_state, profile_manager=profile_manager)
         
         # 2. 创建 AppServices，它会立即开始监听 AppState 的变化
-        app_services = AppServices(state=app_state, base_dir=BASE_DIR)
+        app_services = AppServices(state=app_state)
         _app_services_for_cleanup = app_services
 
         # 3. **关键修复**：在加载任何配置文件之前，必须先初始化WMI接口。

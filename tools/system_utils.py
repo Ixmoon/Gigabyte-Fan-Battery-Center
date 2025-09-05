@@ -38,17 +38,20 @@ def run_as_admin(base_dir: str):
     error_msg_base = tr("elevation_error_msg")
 
     try:
-        executable = sys.executable
-        script_path = get_application_script_path_for_task()
-        
-        if script_path:
-            # 作为脚本运行：可执行文件是python，文件是脚本
-            params = f'"{script_path}" {subprocess.list2cmdline(sys.argv[1:])}'
-            result = ctypes.windll.shell32.ShellExecuteW(None, "runas", executable, params, base_dir, 1)
-        else:
-            # 作为冻结的可执行文件运行
+        if getattr(sys, 'frozen', False):
+            # --- 打包模式 ---
+            # 关键修复：必须使用 base_dir 来构建真实 .exe 的路径，
+            # 因为 sys.executable 在 onefile 模式下指向临时目录。
+            executable = os.path.join(base_dir, os.path.basename(sys.executable))
             params = subprocess.list2cmdline(sys.argv[1:])
-            result = ctypes.windll.shell32.ShellExecuteW(None, "runas", executable, params, base_dir, 1)
+        else:
+            # --- 脚本模式 ---
+            executable = sys.executable
+            script_path = get_application_script_path_for_task()
+            params = f'"{script_path}" {subprocess.list2cmdline(sys.argv[1:])}'
+
+        # 使用正确的 executable 和 base_dir (作为工作目录) 来执行
+        result = ctypes.windll.shell32.ShellExecuteW(None, "runas", executable, params, base_dir, 1)
 
         if result <= 32:
             # 错误代码 <= 32。常见错误：1223 (用户取消)

@@ -42,11 +42,9 @@ def _handle_wmi_errors(func: Callable[..., Any]) -> Callable[..., Any]:
 class AppServices(QObject):
     """中心化服务层，管理所有后端控制器并响应应用状态的变化。"""
 
-    def __init__(self, state: AppState, base_dir: str, parent: Optional[QObject] = None):
+    def __init__(self, state: AppState, parent: Optional[QObject] = None):
         super().__init__(parent)
         self._is_shutting_down = False
-        self.base_dir = base_dir
-
         self.state = state
         self._current_profile: Optional[ProfileState] = None
         self.wmi_interface = WMIInterface()

@@ -12,12 +12,8 @@ APP_ORGANIZATION_NAME: str = "FanBatteryControl" # Qt用于设置路径
 APP_INTERNAL_NAME: str = "FanBatteryControl" # 用于互斥锁、任务名称等
 
 # ==============================================================================
-# 文件路径 (相对文件名，绝对路径将在main.py中构建)
+# 文件路径 (这些现在由 core.path_manager.PathManager 集中管理)
 # ==============================================================================
-CONFIG_FILE_NAME: str = "control_config.json"
-LANGUAGES_JSON_NAME: str = "languages.json"
-APP_ICON_NAME: str = "app_icon.ico"
-TASK_XML_FILE_NAME: str = "task_template.xml" # 用于自定义任务计划程序定义
 
 # ==============================================================================
 # 默认配置值

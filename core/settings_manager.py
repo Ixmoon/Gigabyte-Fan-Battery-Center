@@ -14,19 +14,17 @@ from tools.task_scheduler import create_startup_task, delete_startup_task
 class SettingsManager(QObject):
     """管理全局应用设置的类。"""
     
-    def __init__(self, app_state: AppState, profile_manager: ProfileManager, base_dir: str, parent: Optional[QObject] = None):
+    def __init__(self, app_state: AppState, profile_manager: ProfileManager, parent: Optional[QObject] = None):
         """
         初始化SettingsManager。
         
         Args:
             app_state: 对应用全局状态对象的引用。
             profile_manager: ProfileManager实例，用于触发保存操作。
-            base_dir: 应用的基础目录。
         """
         super().__init__(parent)
         self.state = app_state
         self.profile_manager = profile_manager
-        self.base_dir = base_dir
 
     def set_language(self, lang_code: str):
         """设置应用语言并保存配置。"""
@@ -39,7 +37,7 @@ class SettingsManager(QObject):
         if os.name != 'nt': return
         try:
             if enabled:
-                create_startup_task(self.base_dir)
+                create_startup_task(self.state.paths)
             else:
                 delete_startup_task()
             

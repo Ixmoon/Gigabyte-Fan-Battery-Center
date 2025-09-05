@@ -8,7 +8,8 @@ import sys
 import subprocess
 import tempfile
 from typing import Tuple
-from config.settings import TASK_SCHEDULER_NAME, STARTUP_ARG_MINIMIZED, TASK_XML_FILE_NAME
+from config.settings import TASK_SCHEDULER_NAME, STARTUP_ARG_MINIMIZED
+from core.path_manager import PathManager
 from .system_utils import get_application_executable_path, get_application_script_path_for_task
 from .localization import tr
 
@@ -90,12 +91,12 @@ def _get_default_task_xml_content() -> bytes:
     # 添加BOM前缀并编码为UTF-16 Little Endian
     return b'\xff\xfe' + xml_str.encode('utf-16-le')
 
-def create_startup_task(base_dir: str):
+def create_startup_task(paths: PathManager):
     """
     使用外部XML模板创建或更新Windows任务计划程序任务。
     如果模板不存在，则创建一个默认模板。
     """
-    xml_path = os.path.join(base_dir, TASK_XML_FILE_NAME)
+    xml_path = paths.task_template
 
     if not os.path.exists(xml_path):
         try:
@@ -127,7 +128,7 @@ def create_startup_task(base_dir: str):
     else:
         arguments = STARTUP_ARG_MINIMIZED
         
-    working_dir = base_dir
+    working_dir = paths.base_dir
 
     final_xml_content_str = xml_template.replace("{{COMMAND}}", command)
     final_xml_content_str = final_xml_content_str.replace("{{ARGUMENTS}}", arguments)

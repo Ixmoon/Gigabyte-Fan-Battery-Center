@@ -8,6 +8,7 @@ import copy
 from gui.qt import QObject, Signal, Property, Slot
 from typing import List, Dict, Optional, Any, cast
 from config.settings import DEFAULT_PROFILE_SETTINGS
+from core.path_manager import PathManager
 
 class ProfileState(QObject):
     """
@@ -112,8 +113,9 @@ class AppState(QObject):
     active_curve_type_changed = Signal(str)
     controller_status_message_changed = Signal(str)
 
-    def __init__(self, parent: Optional[QObject] = None):
+    def __init__(self, path_manager: PathManager, parent: Optional[QObject] = None):
         super().__init__(parent)
+        self.paths = path_manager
         self._language: str = "en"
         self._start_on_boot: bool = False
         self._active_profile_name: Optional[str] = None

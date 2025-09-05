@@ -11,16 +11,15 @@ from typing import Dict, Any, Optional, List
 
 from gui.qt import QObject, Signal
 from .state import AppState, ProfileState
-from config.settings import DEFAULT_PROFILE_SETTINGS, CONFIG_FILE_NAME
+from config.settings import DEFAULT_PROFILE_SETTINGS
 
 class ProfileManager(QObject):
     """管理应用配置文件的中心类。"""
     
-    def __init__(self, base_dir: str, app_state: AppState, parent: Optional[QObject] = None):
+    def __init__(self, app_state: AppState, parent: Optional[QObject] = None):
         super().__init__(parent)
-        self.base_dir = base_dir
         self.state = app_state
-        self.config_path = os.path.join(self.base_dir, CONFIG_FILE_NAME)
+        self.config_path = self.state.paths.control_config
 
     def load_config(self):
         """从JSON文件加载配置，填充状态。"""
