@@ -1,30 +1,33 @@
 {
     "language": "en",
-    "start_on_boot": false,
-    "active_profile_name": "Config 1",
-    "window_geometry": "01d9d0cb00030000000003ba000001b3000008370000046e000003ba000001b3000008370000046e00000000000000000a00000003ba000001b3000008370000046e",
+    "start_on_boot": true,
+    "active_profile_name": "1",
+    "window_geometry": "01d9d0cb00030000000003430000013700000814000003f2000003430000013700000814000003f200000000000000000a00000003430000013700000814000003f2",
+    "profile_order": [
+        "1"
+    ],
     "profiles": {
-        "Config 1": {
+        "1": {
             "cpu_fan_table": [
                 [
-                    31,
-                    3
+                    50,
+                    0
                 ],
                 [
-                    37,
-                    33
+                    60,
+                    15
                 ],
                 [
-                    56,
-                    55
+                    70,
+                    25
                 ],
                 [
-                    80,
-                    67
+                    79,
+                    36
                 ],
                 [
                     85,
-                    67
+                    60
                 ],
                 [
                     90,
@@ -65,15 +68,32 @@
                     100
                 ]
             ],
-            "fan_mode": "custom",
-            "custom_fan_speed": 29,
+            "fan_mode": "auto",
+            "custom_fan_speed": 50,
             "battery_charge_policy": "custom",
-            "battery_charge_threshold": 80,
-            "fan_adjustment_interval_s": 1.5,
+            "battery_charge_threshold": 85,
+            "gui_update_interval_ms": 1000,
+            "controller_update_interval_ms": 1500,
             "fan_hysteresis_percent": 5,
             "min_adjustment_step": 1,
             "max_adjustment_step": 5,
-            "gui_update_interval_ms": 1000
+            "min_display_temp_c": 40,
+            "curve_point_picker_radius": 8.0,
+            "spline_points": 100,
+            "cpu_curve_color": "#00AEEF",
+            "gpu_curve_color": "#7AC143",
+            "point_color_active": "#FFFFFF",
+            "point_size_active": 7,
+            "cpu_temp_indicator_color": "#FF6347",
+            "gpu_temp_indicator_color": "#90EE90",
+            "line_width_active": 2.0,
+            "line_width_inactive": 1.0,
+            "alpha_active": 1.0,
+            "alpha_inactive": 0.4,
+            "figure_bg_color": "#33373B",
+            "axes_bg_color": "#2A2D30",
+            "grid_color": "#555555",
+            "axes_label_color": "#E0E0E0"
         }
     }
 }

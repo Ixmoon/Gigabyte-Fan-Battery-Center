@@ -1,206 +1,182 @@
-# config/settings.py
 # -*- coding: utf-8 -*-
 """
-Global constants and default settings for the Fan & Battery Control application.
+风扇和电池控制应用的全局常量和默认设置。
 """
 from typing import List, Dict, Any
 
 # ==============================================================================
-# Application Info
+# 应用信息
 # ==============================================================================
 APP_NAME: str = "FanBatteryControl"
-APP_ORGANIZATION_NAME: str = "FanBatteryControl" # Used by Qt for settings path
-APP_INTERNAL_NAME: str = "FanBatteryControl" # Used for mutex, task name
-APP_VERSION: str = "1.0.0"
+APP_ORGANIZATION_NAME: str = "FanBatteryControl" # Qt用于设置路径
+APP_INTERNAL_NAME: str = "FanBatteryControl" # 用于互斥锁、任务名称等
 
 # ==============================================================================
-# File Paths (Relative file names, absolute paths will be constructed in main)
+# 文件路径 (相对文件名，绝对路径将在main.py中构建)
 # ==============================================================================
 CONFIG_FILE_NAME: str = "control_config.json"
 LANGUAGES_JSON_NAME: str = "languages.json"
 APP_ICON_NAME: str = "app_icon.ico"
-TASK_XML_FILE_NAME: str = "task_template.xml" # For custom task scheduler definitions
+TASK_XML_FILE_NAME: str = "task_template.xml" # 用于自定义任务计划程序定义
 
 # ==============================================================================
-# Default Config Values
+# 默认配置值
 # ==============================================================================
-NUM_PROFILES: int = 6
-DEFAULT_PROFILE_PREFIX: str = "Config" # Base name for default profiles, number added later
-DEFAULT_LANGUAGE: str = "en" # Default language code (ISO 639-1)
-DEFAULT_START_ON_BOOT: bool = False
-DEFAULT_START_MINIMIZED: bool = False # Default for when launched via auto-start task
+DEFAULT_LANGUAGE: str = "en" # 默认语言代码 (ISO 639-1)
 
-# --- Core State Constants ---
+# --- 核心状态常量 ---
 FAN_MODE_BIOS = "bios"
-FAN_MODE_AUTO = "auto" # Software-controlled curve
-FAN_MODE_CUSTOM = "custom" # Software-controlled custom speed
+FAN_MODE_AUTO = "auto" # 软件控制的曲线
+FAN_MODE_CUSTOM = "custom" # 软件控制的自定义速度
 FAN_MODE_UNKNOWN = "unknown"
 CHARGE_POLICY_BIOS = "bios"
 CHARGE_POLICY_CUSTOM = "custom"
-FAN_MODE_AUTO_EQUIVALENT_SPEED = 0 # The speed that effectively enables EC/BIOS auto control
 
-# --- Default Profile Settings ---
-# These define the structure and default values for *each* profile
+# --- 电池控制常量 ---
+BATTERY_POLICY_CODES: Dict[str, int] = {"bios": 0, "custom": 4}
+BATTERY_CODE_POLICIES: Dict[int, str] = {v: k for k, v in BATTERY_POLICY_CODES.items()}
+
+# --- 默认配置文件设置 ---
+# 定义了 *每个* 配置文件的结构和默认值
 DEFAULT_CPU_FAN_TABLE: List[List[int]] = [[50, 0], [60, 15], [70, 25], [80, 40], [85, 60], [90, 80], [95, 100]]
 DEFAULT_GPU_FAN_TABLE: List[List[int]] = [[40, 0], [55, 15], [65, 25], [70, 40], [75, 60], [80, 80], [85, 100]]
 DEFAULT_FAN_MODE: str = FAN_MODE_AUTO
-DEFAULT_CUSTOM_FAN_SPEED: int = 30 # Percentage
+DEFAULT_CUSTOM_FAN_SPEED: int = 30 # 百分比
 DEFAULT_CHARGE_POLICY: str = CHARGE_POLICY_BIOS
-DEFAULT_CHARGE_THRESHOLD: int = 80 # Percentage
+DEFAULT_CHARGE_THRESHOLD: int = 80 # 百分比
 
-# --- Default Control Logic & Timing (per profile) ---
-DEFAULT_AUTO_MODE_CYCLE_DURATION_S: float = 3.0 # How often to recalculate target speed
-DEFAULT_GUI_UPDATE_INTERVAL_MS: int = 1000 # How often the GUI refreshes status
-DEFAULT_FAN_ADJUSTMENT_INTERVAL_S: float = 1.5 # How often to adjust fan speed towards target in auto mode
-DEFAULT_FAN_HYSTERESIS_PERCENT: int = 5 # Temp change needed to trigger target recalculation
-DEFAULT_MIN_ADJUSTMENT_STEP: int = 1 # Smallest fan speed change per adjustment interval
-DEFAULT_MAX_ADJUSTMENT_STEP: int = 5 # Largest fan speed change per adjustment interval
+# --- 默认控制逻辑和时序 (每个配置文件) ---
+DEFAULT_GUI_UPDATE_INTERVAL_MS: int = 1000 # GUI刷新状态的频率
+DEFAULT_CONTROLLER_UPDATE_INTERVAL_MS: int = 1500 # 在自动模式下调整风扇速度朝向目标的频率
+DEFAULT_FAN_HYSTERESIS_PERCENT: int = 5 # 触发目标重新计算所需的温度变化
+DEFAULT_MIN_ADJUSTMENT_STEP: int = 1 # 每个调整间隔的最小风扇速度变化
+DEFAULT_MAX_ADJUSTMENT_STEP: int = 5 # 每个调整间隔的最大风扇速度变化
 
-# --- Default Curve Plotting & UI Appearance (per profile) ---
-DEFAULT_CURVE_POINT_PICKER_RADIUS: float = 8.0 # Click radius for points on graph
-DEFAULT_SPLINE_POINTS: int = 100 # Number of points for smooth curve interpolation line
+# --- 默认曲线绘制和UI外观 (每个配置文件) ---
+DEFAULT_MIN_DISPLAY_TEMP_C: int = 40 # 【新增】曲线图X轴显示的最小温度
+DEFAULT_CURVE_POINT_PICKER_RADIUS: float = 8.0 # 图上点的点击半径
+DEFAULT_SPLINE_POINTS: int = 100 # 平滑曲线插值线的点数
 DEFAULT_CPU_CURVE_COLOR: str = '#00AEEF'
 DEFAULT_GPU_CURVE_COLOR: str = '#7AC143'
 DEFAULT_POINT_COLOR_ACTIVE: str = '#FFFFFF'
 DEFAULT_POINT_SIZE_ACTIVE: int = 7
-DEFAULT_CPU_TEMP_INDICATOR_COLOR: str = '#FF6347' # Tomato
-DEFAULT_GPU_TEMP_INDICATOR_COLOR: str = '#90EE90' # LightGreen
-DEFAULT_CPU_SPEED_INDICATOR_COLOR: str = '#FFB3A7' # Lighter Tomato
-DEFAULT_GPU_SPEED_INDICATOR_COLOR: str = '#C1F0C1' # Lighter LightGreen
+DEFAULT_CPU_TEMP_INDICATOR_COLOR: str = '#FF6347' # 番茄色
+DEFAULT_GPU_TEMP_INDICATOR_COLOR: str = '#90EE90' # 亮绿色
 DEFAULT_LINE_WIDTH_ACTIVE: float = 2.0
 DEFAULT_LINE_WIDTH_INACTIVE: float = 1.0
 DEFAULT_ALPHA_ACTIVE: float = 1.0
 DEFAULT_ALPHA_INACTIVE: float = 0.4
+DEFAULT_FIGURE_BG_COLOR: str = '#33373B'
+DEFAULT_AXES_BG_COLOR: str = '#2A2D30'
+DEFAULT_GRID_COLOR: str = '#555555'
+DEFAULT_AXES_LABEL_COLOR: str = '#E0E0E0'
 
-# --- Combine all default profile settings into one dictionary ---
+# --- 将所有默认配置文件设置合并到一个字典中 ---
 DEFAULT_PROFILE_SETTINGS: Dict[str, Any] = {
-    "CPU_FAN_TABLE": [list(p) for p in DEFAULT_CPU_FAN_TABLE],
-    "GPU_FAN_TABLE": [list(p) for p in DEFAULT_GPU_FAN_TABLE],
-    "FAN_MODE": DEFAULT_FAN_MODE,
-    "CUSTOM_FAN_SPEED": DEFAULT_CUSTOM_FAN_SPEED,
-    "BATTERY_CHARGE_POLICY": DEFAULT_CHARGE_POLICY,
-    "BATTERY_CHARGE_THRESHOLD": DEFAULT_CHARGE_THRESHOLD,
-    "AUTO_MODE_CYCLE_DURATION_S": DEFAULT_AUTO_MODE_CYCLE_DURATION_S,
-    "GUI_UPDATE_INTERVAL_MS": DEFAULT_GUI_UPDATE_INTERVAL_MS,
-    "FAN_ADJUSTMENT_INTERVAL_S": DEFAULT_FAN_ADJUSTMENT_INTERVAL_S,
-    "FAN_HYSTERESIS_PERCENT": DEFAULT_FAN_HYSTERESIS_PERCENT,
-    "MIN_ADJUSTMENT_STEP": DEFAULT_MIN_ADJUSTMENT_STEP,
-    "MAX_ADJUSTMENT_STEP": DEFAULT_MAX_ADJUSTMENT_STEP,
-    "CURVE_POINT_PICKER_RADIUS": DEFAULT_CURVE_POINT_PICKER_RADIUS,
-    "SPLINE_POINTS": DEFAULT_SPLINE_POINTS,
-    "CPU_CURVE_COLOR": DEFAULT_CPU_CURVE_COLOR,
-    "GPU_CURVE_COLOR": DEFAULT_GPU_CURVE_COLOR,
-    "POINT_COLOR_ACTIVE": DEFAULT_POINT_COLOR_ACTIVE,
-    "POINT_SIZE_ACTIVE": DEFAULT_POINT_SIZE_ACTIVE,
-    "CPU_TEMP_INDICATOR_COLOR": DEFAULT_CPU_TEMP_INDICATOR_COLOR,
-    "GPU_TEMP_INDICATOR_COLOR": DEFAULT_GPU_TEMP_INDICATOR_COLOR,
-    "CPU_SPEED_INDICATOR_COLOR": DEFAULT_CPU_SPEED_INDICATOR_COLOR,
-    "GPU_SPEED_INDICATOR_COLOR": DEFAULT_GPU_SPEED_INDICATOR_COLOR,
-    "LINE_WIDTH_ACTIVE": DEFAULT_LINE_WIDTH_ACTIVE,
-    "LINE_WIDTH_INACTIVE": DEFAULT_LINE_WIDTH_INACTIVE,
-    "ALPHA_ACTIVE": DEFAULT_ALPHA_ACTIVE,
-    "ALPHA_INACTIVE": DEFAULT_ALPHA_INACTIVE,
+    "cpu_fan_table": [list(p) for p in DEFAULT_CPU_FAN_TABLE],
+    "gpu_fan_table": [list(p) for p in DEFAULT_GPU_FAN_TABLE],
+    "fan_mode": DEFAULT_FAN_MODE,
+    "custom_fan_speed": DEFAULT_CUSTOM_FAN_SPEED,
+    "battery_charge_policy": DEFAULT_CHARGE_POLICY,
+    "battery_charge_threshold": DEFAULT_CHARGE_THRESHOLD,
+    "gui_update_interval_ms": DEFAULT_GUI_UPDATE_INTERVAL_MS,
+    "controller_update_interval_ms": DEFAULT_CONTROLLER_UPDATE_INTERVAL_MS,
+    "fan_hysteresis_percent": DEFAULT_FAN_HYSTERESIS_PERCENT,
+    "min_adjustment_step": DEFAULT_MIN_ADJUSTMENT_STEP,
+    "max_adjustment_step": DEFAULT_MAX_ADJUSTMENT_STEP,
+    "min_display_temp_c": DEFAULT_MIN_DISPLAY_TEMP_C, # 【新增】
+    "curve_point_picker_radius": DEFAULT_CURVE_POINT_PICKER_RADIUS,
+    "spline_points": DEFAULT_SPLINE_POINTS,
+    "cpu_curve_color": DEFAULT_CPU_CURVE_COLOR,
+    "gpu_curve_color": DEFAULT_GPU_CURVE_COLOR,
+    "point_color_active": DEFAULT_POINT_COLOR_ACTIVE,
+    "point_size_active": DEFAULT_POINT_SIZE_ACTIVE,
+    "cpu_temp_indicator_color": DEFAULT_CPU_TEMP_INDICATOR_COLOR,
+    "gpu_temp_indicator_color": DEFAULT_GPU_TEMP_INDICATOR_COLOR,
+    "line_width_active": DEFAULT_LINE_WIDTH_ACTIVE,
+    "line_width_inactive": DEFAULT_LINE_WIDTH_INACTIVE,
+    "alpha_active": DEFAULT_ALPHA_ACTIVE,
+    "alpha_inactive": DEFAULT_ALPHA_INACTIVE,
+    "figure_bg_color": DEFAULT_FIGURE_BG_COLOR,
+    "axes_bg_color": DEFAULT_AXES_BG_COLOR,
+    "grid_color": DEFAULT_GRID_COLOR,
+    "axes_label_color": DEFAULT_AXES_LABEL_COLOR,
 }
 
 # ==============================================================================
-# WMI Config
+# WMI 配置
 # ==============================================================================
-WMI_NAMESPACE: str = "root\\WMI"
+WMI_NAMESPACE: str = r"root\WMI"
 DEFAULT_WMI_GET_CLASS: str = "GB_WMIACPI_Get"
 DEFAULT_WMI_SET_CLASS: str = "GB_WMIACPI_Set"
-
-# --- WMI Method Names ---
-# Getters
-WMI_GET_CPU_TEMP: str = "getCpuTemp"
-WMI_GET_GPU_TEMP1: str = "getGpuTemp1" # Primary GPU temp method
-WMI_GET_GPU_TEMP2: str = "getGpuTemp2" # Secondary GPU temp method (often unused or same as 1)
-WMI_GET_RPM1: str = "getRpm1" # Fan 1 (often CPU)
-WMI_GET_RPM2: str = "getRpm2" # Fan 2 (often GPU/System)
-WMI_GET_CHARGE_POLICY: str = "GetChargePolicy"
-WMI_GET_CHARGE_STOP: str = "GetChargeStop"
-# Setters
-WMI_SET_CUSTOM_FAN_STATUS: str = "SetFixedFanStatus" # Enable custom fan mode (Data=1.0)
-WMI_SET_SUPER_QUIET: str = "SetSuperQuiet" # Disable super quiet mode (Data=0.0)
-WMI_SET_AUTO_FAN_STATUS: str = "SetAutoFanStatus" # Disable auto fan mode (Data=0.0)
-WMI_SET_STEP_FAN_STATUS: str = "SetStepFanStatus" # Disable step fan mode (Data=0.0)
-WMI_SET_CUSTOM_FAN_SPEED: str = "SetFixedFanSpeed" # Set Fan 1 speed (Data=raw_value)
-WMI_SET_GPU_FAN_DUTY: str = "SetGPUFanDuty" # Set Fan 2 speed (Data=raw_value)
-WMI_SET_CHARGE_POLICY: str = "SetChargePolicy" # Set policy (Data=policy_code)
-WMI_SET_CHARGE_STOP: str = "SetChargeStop" # Set threshold (Data=percentage)
 WMI_REQUEST_TIMEOUT_S: float = 5.0
-
-# --- WMI Worker Communication ---
-WMI_WORKER_STOP_SIGNAL: str = "STOP_WMI_WORKER" # Signal to stop the worker thread
-
-# --- WMI Worker Actions (used for internal request queue) ---
+WMI_WORKER_STOP_SIGNAL: str = "STOP_WMI_WORKER"
 WMI_ACTION_GET_CPU_TEMP: str = "get_cpu_temp"
 WMI_ACTION_GET_GPU_TEMP: str = "get_gpu_temp"
 WMI_ACTION_GET_RPM: str = "get_rpm"
 WMI_ACTION_GET_CHARGE_POLICY: str = "get_charge_policy"
 WMI_ACTION_GET_CHARGE_STOP: str = "get_charge_stop"
-WMI_ACTION_GET_ALL_SENSORS: str = "get_all_sensors" # New combined action
+WMI_ACTION_GET_ALL_SENSORS: str = "get_all_sensors"
 WMI_ACTION_GET_NON_TEMP_SENSORS: str = "get_non_temp_sensors"
 WMI_ACTION_CONFIGURE_CUSTOM_FAN: str = "configure_custom_fan"
 WMI_ACTION_CONFIGURE_BIOS_FAN: str = "configure_bios_fan"
 WMI_ACTION_SET_FAN_SPEED_RAW: str = "set_fan_speed_raw"
 WMI_ACTION_SET_CHARGE_POLICY: str = "set_charge_policy"
 WMI_ACTION_SET_CHARGE_STOP: str = "set_charge_stop"
-
-# --- WMI Error/Default Values ---
+WMI_GET_CPU_TEMP: str = "getCpuTemp"
+WMI_GET_GPU_TEMP1: str = "getGpuTemp1"
+WMI_GET_GPU_TEMP2: str = "getGpuTemp2"
+WMI_GET_RPM1: str = "getRpm1"
+WMI_GET_RPM2: str = "getRpm2"
+WMI_GET_CHARGE_POLICY: str = "GetChargePolicy"
+WMI_GET_CHARGE_STOP: str = "GetChargeStop"
+WMI_SET_CUSTOM_FAN_STATUS: str = "SetFixedFanStatus"
+WMI_SET_AUTO_FAN_STATUS: str = "SetAutoFanStatus"
+WMI_SET_CUSTOM_FAN_SPEED: str = "SetFixedFanSpeed"
+WMI_SET_GPU_FAN_DUTY: str = "SetGPUFanDuty"
+WMI_SET_CHARGE_POLICY: str = "SetChargePolicy"
+WMI_SET_CHARGE_STOP: str = "SetChargeStop"
+WMI_SET_SUPER_QUIET: str = "SetSuperQuiet"
+WMI_SET_STEP_FAN_STATUS: str = "SetStepFanStatus"
 TEMP_READ_ERROR_VALUE: float = -1.0
 RPM_READ_ERROR_VALUE: int = -1
 CHARGE_POLICY_READ_ERROR_VALUE: int = -1
 CHARGE_THRESHOLD_READ_ERROR_VALUE: int = -1
-INIT_APPLIED_PERCENTAGE: int = -1 # Initial state before first application
-
-# --- WMI Battery Policy Codes (Now handled internally by BatteryController) ---
-# The integer codes (0 for bios, 4 for custom) are now an implementation
-# detail of the BatteryController and are no longer defined globally.
+INIT_APPLIED_PERCENTAGE: int = -1
 
 # ==============================================================================
-# Control Logic Parameters
+# 控制逻辑参数
 # ==============================================================================
 MIN_TEMP_C: int = 0
 MAX_TEMP_C: int = 100
 MIN_FAN_PERCENT: int = 0
 MAX_FAN_PERCENT: int = 100
-MIN_CHARGE_PERCENT: int = 0 # Usually limited by hardware/BIOS (e.g., 50)
+MIN_CHARGE_PERCENT: int = 60
 MAX_CHARGE_PERCENT: int = 100
-MIN_CURVE_POINTS: int = 2 # Minimum points required for a valid fan curve
-MIN_POINTS_FOR_INTERPOLATION: int = 2 # Minimum unique points for PCHIP
+MIN_CURVE_POINTS: int = 2
+MIN_POINTS_FOR_INTERPOLATION: int = 2
 
 # ==============================================================================
-# Task Scheduler / Single Instance
+# 任务计划程序 / 单例实例
 # ==============================================================================
 TASK_SCHEDULER_NAME: str = f"{APP_INTERNAL_NAME} Startup Task"
-STARTUP_ARG_MINIMIZED: str = "--minimized" # Argument passed when started by task scheduler
-# Generate a unique mutex name for this application (replace with a real GUID if needed)
+STARTUP_ARG_MINIMIZED: str = "--minimized"
 _APP_GUID: str = "{17e0cc04-cddb-4b9b-adcc-5faa4872e054}"
 MUTEX_NAME: str = f"Global\\{APP_INTERNAL_NAME}_Mutex_{_APP_GUID}"
 SHARED_MEM_NAME: str = f"Global\\{APP_INTERNAL_NAME}_SharedMem_{_APP_GUID}"
-SHARED_MEM_SIZE: int = 64 # Size in bytes (enough for HWND as string + null terminator, or binary)
-# --- Shared Memory Command Structure ---
+SHARED_MEM_SIZE: int = 64
+# --- 共享内存命令结构 ---
 SHARED_MEM_HWND_OFFSET: int = 0
-SHARED_MEM_HWND_SIZE: int = 32 # Reserve 32 bytes for HWND string
-SHARED_MEM_COMMAND_OFFSET: int = 32 # Command byte starts after HWND block
-SHARED_MEM_COMMAND_SIZE: int = 1 # Just one byte for the command
+SHARED_MEM_HWND_SIZE: int = 32
+SHARED_MEM_COMMAND_OFFSET: int = 32
+SHARED_MEM_COMMAND_SIZE: int = 1
 COMMAND_NONE: int = 0
-COMMAND_QUIT: int = 1
-# COMMAND_SHOW is now fully removed.
-COMMAND_RELOAD_AND_SHOW: int = 3 # Reload config and show window (for manual launch)
-COMMAND_RELOAD_ONLY: int = 4 # Reload config only (for task scheduler launch)
+COMMAND_QUIT: int = 1                  # 请求现有实例退出
+COMMAND_RELOAD_AND_SHOW: int = 2       # 请求现有实例重载配置并显示窗口 (用户手动启动)
+COMMAND_RELOAD_ONLY: int = 3           # 请求现有实例仅重载配置 (任务计划程序启动)
 
 # ==============================================================================
-# Font Config (for Matplotlib)
+# 杂项
 # ==============================================================================
-# Attempt to use preferred fonts, fallback to generic sans-serif
-PREFERRED_FONTS: List[str] = ['Microsoft YaHei', 'DengXian', 'SimHei', 'Arial Unicode MS', 'sans-serif']
-
-# ==============================================================================
-# Miscellaneous
-# ==============================================================================
-# Define known language codes and their display names for the language dropdown
-# This is used as a fallback if the names aren't defined within the language file itself
-KNOWN_LANGUAGES: Dict[str, str] = {
-    "en": "English",
-}
+TOOLTIP_DELAY_MS: int = 500
+KNOWN_LANGUAGES: Dict[str, str] = {"en": "English", "zh": "中文"}

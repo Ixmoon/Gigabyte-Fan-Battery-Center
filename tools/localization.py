@@ -1,315 +1,280 @@
-# tools/localization.py
 # -*- coding: utf-8 -*-
 """
-Handles internationalization (i18n) for the application.
-Loads language strings from a JSON file and provides a translation function.
+处理应用的国际化(i18n)。
+从JSON文件加载语言字符串并提供翻译函数。
 """
 
 import json
 import os
 import sys
 from typing import Dict, Optional
+from config.settings import DEFAULT_LANGUAGE, KNOWN_LANGUAGES
 
-# Import settings needed for defaults and paths
-from config.settings import (
-    DEFAULT_LANGUAGE,
-    KNOWN_LANGUAGES
-)
+# ==============================================================================
+# 默认翻译字典
+# ==============================================================================
 
-# --- Default English Translations (Used for fallback and creating default languages.json) ---
-# ... (DEFAULT_ENGLISH_TRANSLATIONS dictionary remains the same) ...
+# --- 默认英文翻译 ---
 DEFAULT_ENGLISH_TRANSLATIONS: Dict[str, str] = {
-    # Window & UI Elements
+    # 窗口和UI元素
     "window_title": "Fan & Battery Control",
     "cpu_temp_label": "CPU Temp:",
     "gpu_temp_label": "GPU Temp:",
-    "fan1_rpm_label": "Fan 1 RPM:",
-    "fan2_rpm_label": "Fan 2 RPM:",
-    "applied_target_label": "Applied / Target:",
-    "status_label": "Status:",
+    "cpu_fan_rpm_label": "CPU Fan RPM:",
+    "gpu_fan_rpm_label": "GPU Fan RPM:",
+    "applied_target_label": "Applied/Target:",
     "fan_mode_label": "Fan Mode:",
     "mode_bios": "BIOS",
     "mode_auto": "Auto",
     "mode_custom": "Custom",
     "custom_speed_label": "Custom Speed:",
     "charge_policy_label": "Charge Policy:",
-    "mode_custom": "Custom",
     "charge_threshold_label": "Charge Limit:",
     "cpu_curve_button": "CPU Curve",
     "gpu_curve_button": "GPU Curve",
-    "language_label": "Language:",
     "reset_curve_button": "Reset Curve",
     "battery_info_label": "Battery:",
     "start_on_boot_label": "Start on Boot",
     "percent_unit": "%",
     "rpm_unit": " RPM",
     "celsius_unit": "°C",
+    "temp_label": "Temp",
+    "speed_label": "Speed",
+    "rename_button": "Rename",
+    "delete_button": "Delete",
 
-    # Tooltips & Hints
-    "curve_point_tooltip": "Drag to adjust | Temp: {temp}°C | Speed: {speed}%",
+    # 工具提示
+    "curve_point_tooltip": "Temp: {temp}°C, Speed: {speed}%",
     "add_point_info": "Double-click empty space to add point.",
     "delete_point_info": "Right-click point to delete.",
-    "policy_bios_tooltip": "BIOS default charging policy (usually full charge).",
-    "policy_custom_tooltip": "Custom charging policy (uses charge limit slider).",
-    "threshold_slider_tooltip": "Set the maximum charge percentage (only active in Custom mode).",
-    "profile_button_tooltip": "Left-Click: Activate Profile\nRight-Click: Save Current Settings to Profile\nDouble-Click: Rename Profile",
-    "start_on_boot_tooltip": "Automatically start the application with Windows (requires Admin, uses Task Scheduler).",
-
-    # Status Messages
+    "profile_button_tooltip": "Left-Click: Activate\nRight-Click: Save\nDouble-Click: Manage",
+    "add_profile_tooltip": "Add a new profile",
+    "start_on_boot_tooltip": "Automatically start with Windows via Task Scheduler.",
+    "fan_mode_tooltip": "Select the fan control mode.\nBIOS: Control by hardware\nAuto: Control by temperature curve\nCustom: Fixed fan speed",
+    "custom_fan_speed_tooltip": "Set a fixed fan speed for Custom mode.",
+    "charge_policy_tooltip": "Select the battery charging policy.\nBIOS: Default hardware behavior\nCustom: Limit charging to a specific threshold",
+    "charge_threshold_tooltip": "Set the maximum charge level for Custom policy.",
+    "reset_curve_tooltip": "Reset the currently active curve to its default points.",
+    "editable_label_tooltip": "Double-click to enter a value manually.",
+    "maximize_button_tooltip": "Maximize",
+    "restore_button_tooltip": "Restore",
+    
+    # 状态消息
     "initializing": "Initializing...",
     "paused": "Paused (Hidden)",
     "saving_config": "Config saved.",
-    "applying_settings": "Applying settings...",
     "shutting_down": "Shutting down...",
-    "profile_activated": "Profile '{name}' activated.",
-    "profile_saved": "Current settings saved to profile '{name}'.",
-    "profile_renamed": "Profile renamed to '{new_name}'.",
-    "profile_load_error_title": "Profile Error",
-    "profile_load_error_msg": "Could not load profile '{name}'.",
-    "profile_rename_error_msg": "Failed to rename profile '{old_name}'.",
+    "profile_saved_message": "Settings saved to '{profile_name}'.",
     "value_not_available": "---",
     "fan_display_auto_format": "{applied}% / {target}%",
-    "fan_display_error_format": "{error} ({mode})",
     "battery_display_format": "{policy} / {limit}",
- 
-    # Error Messages & Titles
-    "config_load_error_title": "Config Error",
-    "config_load_error_msg": "Could not load or parse '{filename}'.\nUsing default settings.\n\nError: {error}",
-    "config_save_error_title": "Config Save Error",
-    "config_save_error_msg": "Could not save configuration to '{filename}'.\n\nError: {error}",
-    "wmi_init_error_title": "WMI Initialization Error",
-    "wmi_init_error_msg": "Failed to initialize WMI communication.\nEnsure Gigabyte software/drivers are installed and running.\nThe application may not function correctly.\n\nError: {error}",
+
+    # 错误和对话框
+    "wmi_init_error_title": "WMI Error",
+    "wmi_init_error_msg": "Failed to initialize WMI.\nEnsure Gigabyte drivers are installed.\n\nError: {error}",
     "wmi_error": "WMI Error",
     "temp_error": "ERR",
     "rpm_error": "ERR",
-    "policy_error": "ERR",
-    "threshold_error": "ERR",
-    "unknown_mode": "Unknown",
-    "delete_point_error_title": "Delete Point Error",
-    "delete_point_error_msg": "Cannot delete point. Minimum of {min_points} points required.",
-    "dependency_error_title": "Dependency Error",
-    "dependency_error_msg": "Error: Missing required library '{name}'.\nPlease install the necessary packages:\npip install {packages}",
-    "rename_profile_title": "Rename Profile",
-    "rename_profile_label": "Enter new name for '{old_name}':",
-    "rename_profile_error_title": "Rename Error",
-    "rename_profile_error_empty": "Profile name cannot be empty.",
-    "rename_profile_error_duplicate": "Profile name '{new_name}' already exists.",
-    "registry_error_title": "Startup Registry Error", # Kept for potential future use, though Task Scheduler is preferred
-    "registry_write_error_msg": "Could not modify Windows startup settings.\nPlease check permissions or run as administrator if needed.\n\nError: {error}",
-    "icon_load_error_title": "Icon Error",
-    "icon_load_error_msg": "Could not load application icon '{path}'. Tray icon will be default.",
+    "delete_point_error_title": "Delete Error",
+    "delete_point_error_msg": "Cannot delete. Minimum of {min_points} points required.",
+    "rename_profile_title": "Manage Profile",
+    "rename_profile_label": "Enter a new name for '{old_name}':",
+    "delete_profile_title": "Delete Profile",
+    "delete_profile_confirm_msg": "Are you sure you want to permanently delete the profile '{name}'?",
+    "add_profile_title": "Add New Profile",
+    "add_profile_label": "Enter name for the new profile:",
+    "add_profile_error_title": "Invalid Name",
+    "add_profile_empty_name_error": "Profile name cannot be empty.",
+    "add_profile_duplicate_name_error": "A profile named '{name}' already exists.",
     "admin_required_title": "Administrator Privileges Required",
-    "admin_required_msg": "This application requires administrator privileges to function correctly (especially for fan/battery control and auto-start).\nPlease restart the application as an administrator.",
+    "admin_required_msg": "This application requires administrator privileges.",
     "elevation_error_title": "Elevation Error",
-    "elevation_error_msg": "Failed to automatically elevate privileges.\nPlease run the application manually as an administrator.",
-    "task_scheduler_error_title": "Task Scheduler Error",
-    "task_scheduler_error_msg": "Failed to create or delete the startup task.\nPlease check Task Scheduler permissions or logs.\n\nCommand: {command}\n\nError: {error}",
-    "task_check_error_msg": "Failed to check startup task status.\n\nError: {error}",
-    "task_scheduler_permission_error": "Task Scheduler operation requires administrator privileges.", # Specific error hint
-    "task_scheduler_xml_error": "There was an error processing the Task Scheduler XML definition.", # Specific error hint
-    "language_load_error_title": "Language File Error",
-    "language_load_error_msg": "Could not load or parse '{filename}'.\nUsing default English translations.\n\nError: {error}",
-    "language_save_error_title": "Language File Save Error",
-    "language_save_error_msg": "Could not save default language file to '{filename}'.\n\nError: {error}",
+    "elevation_error_msg": "Failed to elevate privileges. Please run as administrator.",
+    "task_scheduler_error_msg": "Task Scheduler failed.\nCommand: {command}\n\nError: {error}",
     "unhandled_exception_title": "Unhandled Exception",
     "single_instance_error_title": "Application Already Running",
     "single_instance_error_msg": "Another instance of {app_name} is already running.\nActivating the existing window.",
-    "single_instance_fallback_msg": "Could not activate the existing window. Please close the other instance manually.",
 
-    # Curve Plot Labels
-    "temp_axis_label": "Temperature (°C)",
-    "speed_axis_label": "Fan Speed (%)",
-    "cpu_temp_indicator_label": "CPU Temp", # Legend label (if needed, currently not shown)
-    "gpu_temp_indicator_label": "GPU Temp", # Legend label (if needed)
-    "cpu_speed_indicator_label": "CPU Target Speed", # Legend label (if needed)
-    "gpu_speed_indicator_label": "GPU Target Speed", # Legend label (if needed)
-    "cpu_curve_legend_label": "CPU Curve",
-    "gpu_curve_legend_label": "GPU Curve",
-
-    # Profile Names
-    "default_profile_name": "Config {num}", # Used by ConfigManager
-
-    # Confirmation Dialogs
-    "reset_curve_confirm_title": "Confirm Reset",
-    "reset_curve_confirm_msg": "Reset the current {curve_type} curve to default values?",
-
-    # Tray Menu
+    # 托盘菜单
     "tray_menu_show_hide": "Show / Hide",
     "tray_menu_quit": "Quit",
 
-    # Language Display Names (Self-reference within each language file is preferred)
-    # These are fallbacks used if a language file doesn't define its own display name.
-    "lang_display_name_en": KNOWN_LANGUAGES.get("en", "English"),
-    "lang_display_name_zh": KNOWN_LANGUAGES.get("zh", "中文"),
-    # Add fallbacks for other languages defined in KNOWN_LANGUAGES
+    # 语言显示名称
+    "lang_display_name_en": "English",
+    "lang_display_name_zh": "中文",
 }
 
-# --- Global Translation Variables ---
+# --- 【新增】默认中文翻译 ---
+DEFAULT_CHINESE_TRANSLATIONS: Dict[str, str] = {
+    # 窗口和UI元素
+    "window_title": "风扇 & 电池控制",
+    "cpu_temp_label": "CPU 温度:",
+    "gpu_temp_label": "GPU 温度:",
+    "cpu_fan_rpm_label": "CPU 风扇转速:",
+    "gpu_fan_rpm_label": "GPU 风扇转速:",
+    "applied_target_label": "应用/目标:",
+    "fan_mode_label": "风扇模式:",
+    "mode_bios": "BIOS",
+    "mode_auto": "自动",
+    "mode_custom": "自定义",
+    "custom_speed_label": "自定义速度:",
+    "charge_policy_label": "充电策略:",
+    "charge_threshold_label": "充电上限:",
+    "cpu_curve_button": "CPU 曲线",
+    "gpu_curve_button": "GPU 曲线",
+    "reset_curve_button": "重置曲线",
+    "battery_info_label": "电池:",
+    "start_on_boot_label": "开机启动",
+    "percent_unit": "%",
+    "rpm_unit": " RPM",
+    "celsius_unit": "°C",
+    "temp_label": "温度",
+    "speed_label": "速度",
+    "rename_button": "重命名",
+    "delete_button": "删除",
+
+    # 工具提示
+    "curve_point_tooltip": "温度: {temp}°C, 速度: {speed}%",
+    "add_point_info": "双击空白区域以添加点。",
+    "delete_point_info": "右键单击点以删除。",
+    "profile_button_tooltip": "左键: 激活\n右键: 保存\n双击: 管理",
+    "add_profile_tooltip": "添加新配置文件",
+    "start_on_boot_tooltip": "通过任务计划程序随 Windows 自动启动。",
+    "fan_mode_tooltip": "选择风扇控制模式。\nBIOS: 由硬件控制\n自动: 根据温度曲线控制\n自定义: 固定风扇速度",
+    "custom_fan_speed_tooltip": "为自定义模式设置一个固定的风扇速度。",
+    "charge_policy_tooltip": "选择电池充电策略。\nBIOS: 默认硬件行为\n自定义: 将充电限制在特定阈值",
+    "charge_threshold_tooltip": "为自定义策略设置最大充电水平。",
+    "reset_curve_tooltip": "将当前活动的曲线重置为其默认点。",
+    "editable_label_tooltip": "双击以手动输入数值。",
+    "maximize_button_tooltip": "最大化",
+    "restore_button_tooltip": "还原",
+    
+    # 状态消息
+    "initializing": "正在初始化...",
+    "paused": "已暂停 (最小化)",
+    "saving_config": "配置已保存。",
+    "shutting_down": "正在关闭...",
+    "profile_saved_message": "设置已保存至 '{profile_name}'。",
+    "value_not_available": "---",
+    "fan_display_auto_format": "{applied}% / {target}%",
+    "battery_display_format": "{policy} / {limit}",
+
+    # 错误和对话框
+    "wmi_init_error_title": "WMI 错误",
+    "wmi_init_error_msg": "WMI 初始化失败。\n请确保已安装技嘉驱动程序。\n\n错误: {error}",
+    "wmi_error": "WMI 错误",
+    "temp_error": "错误",
+    "rpm_error": "错误",
+    "delete_point_error_title": "删除错误",
+    "delete_point_error_msg": "无法删除。至少需要 {min_points} 个点。",
+    "rename_profile_title": "管理配置文件",
+    "rename_profile_label": "为 '{old_name}' 输入新名称:",
+    "delete_profile_title": "删除配置文件",
+    "delete_profile_confirm_msg": "您确定要永久删除配置文件 '{name}' 吗？",
+    "add_profile_title": "添加新配置文件",
+    "add_profile_label": "为新配置文件输入名称:",
+    "add_profile_error_title": "无效名称",
+    "add_profile_empty_name_error": "配置文件名称不能为空。",
+    "add_profile_duplicate_name_error": "名为 '{name}' 的配置文件已存在。",
+    "admin_required_title": "需要管理员权限",
+    "admin_required_msg": "此应用程序需要管理员权限才能运行。",
+    "elevation_error_title": "提权失败",
+    "elevation_error_msg": "无法提升权限。请以管理员身份运行。",
+    "task_scheduler_error_msg": "任务计划程序失败。\n命令: {command}\n\n错误: {error}",
+    "unhandled_exception_title": "未处理的异常",
+    "single_instance_error_title": "应用程序已在运行",
+    "single_instance_error_msg": "{app_name} 的另一个实例已在运行。\n正在激活现有窗口。",
+
+    # 托盘菜单
+    "tray_menu_show_hide": "显示 / 隐藏",
+    "tray_menu_quit": "退出",
+
+    # 语言显示名称
+    "lang_display_name_en": "English",
+    "lang_display_name_zh": "中文",
+}
+
+# ==============================================================================
+# 核心翻译逻辑
+# ==============================================================================
+
 _translations: Dict[str, Dict[str, str]] = {}
 _current_language: str = DEFAULT_LANGUAGE
 _translations_loaded: bool = False
-_language_file_path: Optional[str] = None # Cache the file path
+_language_file_path: Optional[str] = None
 
-# --- Language Loading Function ---
-def load_translations(file_path: Optional[str] = None, force_reload: bool = False) -> Dict[str, Dict[str, str]]:
-    """
-    Loads translations from the specified JSON file.
-    Creates a default English file if the specified file doesn't exist or is invalid.
-    Merges loaded translations with defaults to ensure all keys are present.
-    """
-    global _translations, _current_language, _translations_loaded, _language_file_path
-    if file_path:
-        _language_file_path = file_path
-    elif not _language_file_path:
-        raise ValueError("load_translations must be called with a file_path on the first run.")
-
-    if _translations_loaded and not force_reload:
-        return _translations
-
-    default_data = {DEFAULT_LANGUAGE: DEFAULT_ENGLISH_TRANSLATIONS.copy()}
+def load_translations(file_path: str):
+    global _translations, _translations_loaded, _language_file_path
+    _language_file_path = file_path
+    
+    # 【修复】默认数据现在包含英文和中文
+    default_data = {
+        "en": DEFAULT_ENGLISH_TRANSLATIONS.copy(),
+        "zh": DEFAULT_CHINESE_TRANSLATIONS.copy()
+    }
     loaded_data = {}
-    write_default_file = False
-
+    
     try:
-        if os.path.exists(_language_file_path):
-            # Check if file is empty before trying to load
-            if os.path.getsize(_language_file_path) > 0:
-                with open(_language_file_path, 'r', encoding='utf-8') as f:
-                    loaded_data = json.load(f)
-                if not isinstance(loaded_data, dict):
-                    print(f"Warning: Invalid format in language file '{_language_file_path}'. Using default English.", file=sys.stderr)
-                    loaded_data = {}
-                    write_default_file = True # Overwrite invalid file
-            else:
-                # File exists but is empty
-                print(f"Warning: Language file '{_language_file_path}' is empty. Using default English.", file=sys.stderr)
-                loaded_data = {}
-                write_default_file = True # Overwrite empty file
+        if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                loaded_data = json.load(f)
+            if not isinstance(loaded_data, dict):
+                raise json.JSONDecodeError("Invalid format", "", 0)
         else:
-            # File not found, create default English file
-            print(f"Language file '{_language_file_path}' not found. Creating default English file.")
-            loaded_data = {} # Start with empty data
-            write_default_file = True
-
-    except (json.JSONDecodeError, IOError) as e:
-        # Log error and force using defaults, overwrite corrupted file
-        print(f"Error: Could not load or parse language file '{_language_file_path}'. Using default English.\nError: {e}", file=sys.stderr)
-        loaded_data = {}
-        write_default_file = True
-    except Exception as e:
-        # Catch other potential errors during file access/loading
-        print(f"Error: Unexpected error loading language file '{_language_file_path}'. Using default English.\nError: {e}", file=sys.stderr)
-        loaded_data = {}
-        # Decide if you want to overwrite on unexpected errors, maybe not?
-        # write_default_file = True
-
-    # Write the default file if needed (missing, empty, or invalid format)
-    if write_default_file:
+            raise FileNotFoundError
+    except (FileNotFoundError, json.JSONDecodeError):
         try:
-            os.makedirs(os.path.dirname(_language_file_path), exist_ok=True)
-            with open(_language_file_path, 'w', encoding='utf-8') as f:
+            dir_name = os.path.dirname(file_path)
+            if dir_name:
+                os.makedirs(dir_name, exist_ok=True)
+            # 【修复】将包含两种语言的默认数据写入文件
+            with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(default_data, f, indent=4, ensure_ascii=False)
-            print(f"Default language file saved/overwritten at '{_language_file_path}'.")
+            loaded_data = default_data
         except IOError as e:
-            print(f"Error: Could not save default language file to '{_language_file_path}'.\nError: {e}", file=sys.stderr)
-            # Continue with default data in memory even if saving failed
+            print(f"无法写入默认语言文件: {e}", file=sys.stderr)
+            loaded_data = default_data
 
-    # Merge loaded data with defaults
+    # 最终的翻译字典从硬编码的默认值开始，以确保健壮性
     final_translations = default_data.copy()
-    for lang_code, translations in loaded_data.items():
-        if isinstance(translations, dict):
-            merged_lang = DEFAULT_ENGLISH_TRANSLATIONS.copy()
-            merged_lang.update(translations)
-            final_translations[lang_code] = merged_lang
-        else:
-            print(f"Warning: Invalid translation data for language '{lang_code}' in '{file_path}'. Using default English.", file=sys.stderr)
-            final_translations[lang_code] = DEFAULT_ENGLISH_TRANSLATIONS.copy()
-
+    for lang, trans in loaded_data.items():
+        if isinstance(trans, dict):
+            # 使用英文作为基础，然后用加载的翻译覆盖
+            merged = DEFAULT_ENGLISH_TRANSLATIONS.copy()
+            merged.update(trans)
+            final_translations[lang] = merged
+    
     _translations = final_translations
-    if DEFAULT_LANGUAGE not in _translations:
-         _translations[DEFAULT_LANGUAGE] = DEFAULT_ENGLISH_TRANSLATIONS.copy()
-
     _translations_loaded = True
-    return _translations
 
-# --- Set Current Language ---
 def set_language(lang_code: str):
-    """Sets the active language for the tr function."""
-    # ... (function content unchanged) ...
-    global _current_language, _translations
+    global _current_language
     if lang_code in _translations:
         _current_language = lang_code
     else:
-        print(f"Warning: Language code '{lang_code}' not found in loaded translations. Falling back to '{DEFAULT_LANGUAGE}'.", file=sys.stderr)
         _current_language = DEFAULT_LANGUAGE
 
-
-# --- Translation Function ---
 def tr(key: str, **kwargs) -> str:
-    """
-    Translates a given key using the current language setting.
-    This function is annotated to always return a string, as it falls back
-    to the key itself if no translation is found.
-    """
-    # ... (function content unchanged) ...
-    global _current_language, _translations
-
-    # Ensure translations are loaded (should be called explicitly early on)
-    if not _translations_loaded:
-        print("Warning: Attempting to translate before translations are loaded. Loading defaults now.", file=sys.stderr)
-        load_translations() # Attempt to load, will use cached path
-
-    # Get the dictionary for the current language, fallback to English dict
-    lang_dict = _translations.get(_current_language)
-    if lang_dict is None:
-        lang_dict = _translations.get(DEFAULT_LANGUAGE)
-
-    # If even English isn't loaded (severe error), use the hardcoded defaults
-    if lang_dict is None:
-        lang_dict = DEFAULT_ENGLISH_TRANSLATIONS
-
-    # Get the translation, falling back to English if needed, then to the key itself
+    # 首先尝试获取当前语言的翻译
+    lang_dict = _translations.get(_current_language, {})
     translation = lang_dict.get(key)
-    if translation is None and _current_language != DEFAULT_LANGUAGE:
-        # Try fallback to default English
-        default_lang_dict = _translations.get(DEFAULT_LANGUAGE, DEFAULT_ENGLISH_TRANSLATIONS)
-        translation = default_lang_dict.get(key)
-
-    # If still not found, use the key itself as the translation
+    
+    # 如果当前语言没有，则回退到硬编码的英文
     if translation is None:
-        translation = key
-
-    # Apply formatting if arguments are provided
+        translation = DEFAULT_ENGLISH_TRANSLATIONS.get(key, key)
+        
     try:
         return translation.format(**kwargs)
-    except (KeyError, ValueError, TypeError) as e:
-        # Error during formatting, return the raw translation or key with an error marker
-        print(f"Warning: Formatting error for key '{key}' in language '{_current_language}'. Error: {e}", file=sys.stderr)
-        return f"{translation} [FORMAT ERR]"
+    except (KeyError, ValueError):
+        return translation
 
-
-# --- Get Available Languages ---
 def get_available_languages() -> Dict[str, str]:
-    """
-    Returns a dictionary of available language codes and their display names.
-    """
-    # ... (function content unchanged) ...
-    global _translations
-    if not _translations_loaded:
-        load_translations()
-
     available = {}
     for code in sorted(_translations.keys()):
-        lang_dict = _translations[code]
         display_name_key = f"lang_display_name_{code}"
-        # Prefer name from translation file, fallback to settings.KNOWN_LANGUAGES, fallback to code
-        display_name = lang_dict.get(display_name_key, KNOWN_LANGUAGES.get(code, code.upper()))
+        display_name = _translations[code].get(display_name_key, KNOWN_LANGUAGES.get(code, code.upper()))
         available[code] = display_name
     return available
 
-
-# --- Get Current Language ---
 def get_current_language() -> str:
-    """Returns the currently set language code."""
-    # ... (function content unchanged) ...
     return _current_language

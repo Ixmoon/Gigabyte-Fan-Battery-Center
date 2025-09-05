@@ -1,179 +1,196 @@
-# main.py
 # -*- coding: utf-8 -*-
 """
-Application Entry Point for Fan & Battery Control.
-
-Handles initialization, single instance check, admin rights check,
-creates the main application runner, and starts the Qt event loop.
+应用入口，负责初始化、单例检查、管理员权限检查，并启动Qt事件循环。
 """
 
 import sys
 import os
 import traceback
 import atexit
-import ctypes # For admin check message box fallback
-from typing import Optional, Dict, Any
+import ctypes
+from typing import Optional
 
-# --- Early Setup: Define Base Directory (Robust Method) ---
-# This logic correctly handles script, standalone, and onefile modes.
+# --- 早期设置: 定义基础目录 (健壮的方法) ---
+# 该逻辑能正确处理脚本、独立可执行文件和单文件模式。
 try:
     if getattr(sys, 'frozen', False):
-        # Packaged mode (Nuitka/PyInstaller)
-        # sys.argv[0] is the reliable path to the original executable
+        # 打包模式 (Nuitka/PyInstaller)
+        # sys.argv[0] 是指向原始可执行文件的可靠路径
         BASE_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
     else:
-        # Script mode
-        # __file__ is the path to the current script
+        # 脚本模式
+        # __file__ 是当前脚本的路径
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 except Exception:
-    # Fallback for environments where __file__ or sys.argv[0] might be missing
+    # 在 __file__ 或 sys.argv[0] 可能缺失的环境中的回退方案
     BASE_DIR = os.getcwd()
 
-# --- Change Working Directory ---
-# This is CRITICAL for onefile mode to find external config/language files.
+# --- 更改工作目录 ---
+# 这对于单文件模式下查找外部配置文件/语言文件至关重要。
 try:
     os.chdir(BASE_DIR)
 except Exception as e:
-    print(f"Fatal: Could not change working directory to '{BASE_DIR}'. External files will not be found. Error: {e}", file=sys.stderr)
+    print(f"致命错误: 无法将工作目录更改为 '{BASE_DIR}'。外部文件将无法找到。错误: {e}", file=sys.stderr)
 
-# --- Import Project Modules ---
+# --- 导入项目模块 ---
 from gui.qt import QApplication, QMessageBox, QCoreApplication
 
 from config.settings import (
     APP_NAME, APP_ORGANIZATION_NAME, APP_INTERNAL_NAME, STARTUP_ARG_MINIMIZED,
-    LANGUAGES_JSON_NAME, CONFIG_FILE_NAME
+    LANGUAGES_JSON_NAME
 )
-from tools.localization import load_translations, tr, DEFAULT_ENGLISH_TRANSLATIONS, DEFAULT_LANGUAGE, set_language, \
-    _translations_loaded # Use internal flag name
+from tools.localization import load_translations, tr, set_language, _translations_loaded
 from tools.system_utils import is_admin, run_as_admin
-# --- MODIFICATION: Import new functions ---
 from tools.single_instance import (
-    check_single_instance, release_mutex, is_primary, write_hwnd_to_shared_memory,
-    IsWindow # Import IsWindow directly if needed for validation in main
+    check_single_instance, release_mutex, write_hwnd_to_shared_memory
 )
-# --- END MODIFICATION ---
-# from run import AppRunner # AppRunner now creates MainWindow
 from core.app_services import AppServices
+from core.state import AppState
+from core.profile_manager import ProfileManager
+from core.settings_manager import SettingsManager
 from gui.main_window import MainWindow
 
-# --- Global Variables ---
-# These are now managed within the main function's scope
-# and passed to the cleanup function directly.
+# --- 全局变量 ---
+# 该变量在 main 函数作用域内管理，并直接传递给清理函数。
 _app_services_for_cleanup: Optional[AppServices] = None
 
-# --- Matplotlib Font Setup (Now removed as it's a dependency we got rid of) ---
-# This section is intentionally left blank.
-
-
-# --- Exception Handling Hook ---
+# --- 全局异常处理 ---
 def handle_exception(exc_type, exc_value, exc_traceback):
-    """Global exception handler to log errors and show a message."""
+    """全局异常处理器，用于记录错误并显示消息框。"""
     error_msg_detail = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
-    print(f"Unhandled Exception:\n{error_msg_detail}", file=sys.stderr)
+    print(f"未处理的异常:\n{error_msg_detail}", file=sys.stderr)
 
     try:
-        title_key = "unhandled_exception_title"
-        title = tr(title_key) if '_translations_loaded' in globals() and _translations_loaded else "Unhandled Exception"
-        msg = f"An unexpected critical error occurred:\n\n{exc_value}\n\nPlease report this issue."
+        title = tr("unhandled_exception_title") if '_translations_loaded' in globals() and _translations_loaded else "Unhandled Exception"
+        msg = f"发生意外的关键错误:\n\n{exc_value}\n\nPlease report this issue."
 
+        # 确保QApplication实例存在
         app = QApplication.instance() or QApplication([])
-        msg_box = QMessageBox()
-        msg_box.setIcon(QMessageBox.Icon.Critical)
-        msg_box.setWindowTitle(title)
-        msg_box.setText(msg)
-        msg_box.exec()
+        QMessageBox.critical(None, title, msg)
     except Exception as e:
-        print(f"Error showing exception message box: {e}", file=sys.stderr)
+        print(f"显示异常消息框时出错: {e}", file=sys.stderr)
         if os.name == 'nt':
             try:
-                ctypes.windll.user32.MessageBoxW(0, f"Unhandled Exception:\n{exc_value}", "Critical Error", 0x10 | 0x1000)
+                # 如果Qt消息框失败，回退到Windows原生消息框
+                ctypes.windll.user32.MessageBoxW(0, f"未处理的异常:\n{exc_value}", "关键错误", 0x10)
             except Exception: pass
 
-    print("Attempting cleanup after unhandled exception...")
+    print("在未处理的异常后尝试清理...")
     perform_cleanup()
-    print("Forcing exit after exception.")
+    print("异常后强制退出。")
     os._exit(1)
 
-# --- Cleanup Function ---
+# --- 清理函数 ---
 _cleanup_called = False
 def perform_cleanup():
-    """Performs application cleanup actions on exit."""
+    """在退出时执行应用清理操作。"""
     global _app_services_for_cleanup, _cleanup_called
     if _cleanup_called:
         return
     _cleanup_called = True
-    print("Performing cleanup...")
+    print("正在执行清理...")
 
-    # 1. Shutdown AppServices (handles all backend cleanup)
+    # 1. 关闭 AppServices (处理所有后端清理)
     if _app_services_for_cleanup:
-        print("Shutting down AppServices...")
+        print("正在关闭 AppServices...")
         try:
             _app_services_for_cleanup.shutdown()
         except Exception as e:
-            print(f"Error during AppServices shutdown: {e}", file=sys.stderr)
+            print(f"AppServices 关闭期间出错: {e}", file=sys.stderr)
         _app_services_for_cleanup = None
-        print("AppServices shutdown completed.")
+        print("AppServices 关闭完成。")
     else:
-        print("AppServices instance not found for shutdown.")
+        print("未找到 AppServices 实例进行关闭。")
 
-    # 2. Release Mutex and Shared Memory
-    print("Releasing mutex and shared memory...")
+    # 2. 释放互斥锁和共享内存
+    print("正在释放互斥锁和共享内存...")
     release_mutex()
-    print("Mutex and shared memory released.")
+    print("互斥锁和共享内存已释放。")
 
-    print("Cleanup finished.")
+    print("清理完成。")
 
-# --- Main Execution ---
+# --- 主函数 ---
 def main():
-    """Main application function."""
+    """主应用函数。"""
     global _app_services_for_cleanup
 
+    # 注册全局异常处理器和退出清理函数
     sys.excepthook = handle_exception
     atexit.register(perform_cleanup)
 
+    # 加载翻译文件
     languages_json_path = os.path.join(BASE_DIR, LANGUAGES_JSON_NAME)
     load_translations(languages_json_path)
 
+    # Windows平台特定检查
     if os.name == 'nt':
+        # 1. 检查管理员权限
         if not is_admin():
             run_as_admin(BASE_DIR)
             sys.exit(1)
+        
+        # 2. 检查是否已有实例在运行
+        # 传递 is_task_launch 参数，以决定发送哪个命令
         is_task_launch = STARTUP_ARG_MINIMIZED in sys.argv
         if not check_single_instance(is_task_launch=is_task_launch):
-            print("Another instance is running or takeover failed. Exiting.")
+            print("另一个实例正在运行。已发送命令，本实例将退出。")
             sys.exit(0)
 
+    # 初始化Qt应用
     QCoreApplication.setOrganizationName(APP_ORGANIZATION_NAME)
     QCoreApplication.setApplicationName(APP_INTERNAL_NAME)
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     app.aboutToQuit.connect(perform_cleanup)
 
-    # --- Initialize Layers ---
-    app_services = AppServices(base_dir=BASE_DIR)
-    _app_services_for_cleanup = app_services
-
-    start_minimized = STARTUP_ARG_MINIMIZED in sys.argv
+    # --- 初始化各层 ---
     try:
-        # --- Synchronous Initialization ---
-        # The new model initializes WMI and applies settings before showing the window.
-        if not app_services.initialize_and_apply_settings():
-            # If WMI initialization fails, show an error and exit.
-            # The error message is set within AppServices.
+        # 【修复】调整了初始化顺序以解决启动时控制无效的问题
+        # 1. 创建状态和管理器实例
+        app_state = AppState()
+        profile_manager = ProfileManager(base_dir=BASE_DIR, app_state=app_state)
+        settings_manager = SettingsManager(app_state=app_state, profile_manager=profile_manager, base_dir=BASE_DIR)
+        
+        # 2. 创建 AppServices，它会立即开始监听 AppState 的变化
+        app_services = AppServices(state=app_state, base_dir=BASE_DIR)
+        _app_services_for_cleanup = app_services
+
+        # 3. **关键修复**：在加载任何配置文件之前，必须先初始化WMI接口。
+        #    这确保了当 load_config() 触发信号时，AppServices 能够成功执行硬件命令。
+        if not app_services.initialize_wmi():
             error_title = tr("wmi_init_error_title")
-            error_text = app_services.state.controller_status_message
+            error_text = app_state.get_controller_status_message()
             QMessageBox.critical(None, error_title, error_text)
             sys.exit(1)
 
-        main_window = MainWindow(app_services, start_minimized)
+        # 4. 现在可以安全地加载配置了。
+        #    这将设置初始配置文件名，触发 active_profile_changed 信号，
+        #    AppServices 会捕获此信号并正确应用所有初始硬件设置。
+        profile_manager.load_config()
+        set_language(app_state.get_language())
+        
+        # 5. 创建主窗口
+        start_minimized = STARTUP_ARG_MINIMIZED in sys.argv
+        main_window = MainWindow(
+            app_services=app_services, 
+            state=app_state,
+            profile_manager=profile_manager,
+            settings_manager=settings_manager,
+            start_minimized=start_minimized
+        )
+
+        # 6. 将主窗口句柄写入共享内存
+        if os.name == 'nt':
+            main_window.window_initialized_signal.connect(write_hwnd_to_shared_memory)
+
     except Exception as init_error:
         handle_exception(type(init_error), init_error, init_error.__traceback__)
         sys.exit(1)
 
-    # --- Start the Qt Event Loop ---
-    print(f"Starting {APP_NAME} event loop...")
+    # --- 启动Qt事件循环 ---
+    print(f"启动 {APP_NAME} 事件循环...")
     exit_code = app.exec()
-    print(f"Application event loop finished with exit code: {exit_code}")
+    print(f"应用事件循环结束，退出代码: {exit_code}")
     sys.exit(exit_code)
 
 
