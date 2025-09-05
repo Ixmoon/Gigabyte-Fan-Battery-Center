@@ -22,7 +22,7 @@ def is_admin() -> bool:
     else:
         return True
 
-def run_as_admin(base_dir: str):
+def run_as_admin(executable_path: str, base_dir: str):
     """
     尝试在Windows上以管理员权限重新启动应用。
     如果成功，当前的非管理员实例将退出。
@@ -38,16 +38,17 @@ def run_as_admin(base_dir: str):
     error_msg_base = tr("elevation_error_msg")
 
     try:
-        if getattr(sys, 'frozen', False):
+        # 最终修复：使用可执行文件名来区分打包模式和脚本模式，不再依赖不可靠的 sys.frozen
+        is_frozen = os.path.basename(executable_path).lower() not in ('python.exe', 'pythonw.exe')
+
+        if is_frozen:
             # --- 打包模式 ---
-            # 关键修复：必须使用 base_dir 来构建真实 .exe 的路径，
-            # 因为 sys.executable 在 onefile 模式下指向临时目录。
-            executable = os.path.join(base_dir, os.path.basename(sys.executable))
+            executable = executable_path
             params = subprocess.list2cmdline(sys.argv[1:])
         else:
-            # --- 脚本模式 ---
-            executable = sys.executable
-            script_path = get_application_script_path_for_task()
+            # --- 脚本模式 (正确的逻辑) ---
+            executable = executable_path  # 这是 python.exe 的路径
+            script_path = get_application_script_path_for_task() # 这是 main.py 的路径
             params = f'"{script_path}" {subprocess.list2cmdline(sys.argv[1:])}'
 
         # 使用正确的 executable 和 base_dir (作为工作目录) 来执行
@@ -58,7 +59,7 @@ def run_as_admin(base_dir: str):
             if result == 1223:
                 sys.exit(1) # 用户取消UAC，静默退出
             else:
-                detailed_error = f"ShellExecuteW failed with code: {result}"
+                detailed_error = f"ShellExecuteW failed with code: {result}.\n\nAttempted to run:\n{executable}"
                 final_error_msg = f"{error_msg_base}\n\n{detailed_error}"
                 ctypes.windll.user32.MessageBoxW(0, final_error_msg, error_title, 0x10 | 0x1000)
                 sys.exit(1)

@@ -124,8 +124,7 @@ class MainWindow(QMainWindow):
     def init_tray_icon(self):
         if not QSystemTrayIcon.isSystemTrayAvailable(): return
         self.tray_icon = QSystemTrayIcon(self)
-        icon_path = self.state.paths.app_icon
-        icon = QIcon(icon_path) if os.path.exists(icon_path) else self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
+        icon = QIcon(self.state.paths.app_icon)
         self.setWindowIcon(icon)
         self.tray_icon.setIcon(icon)
         self.title_bar.icon_label.setPixmap(icon.pixmap(QSize(24, 24)))

@@ -14,19 +14,35 @@ from typing import Optional
 # 该逻辑能正确处理脚本、独立可执行文件和单文件模式。
 try:
     if os.name == 'nt':
-        # 使用 Windows API 获取可执行文件路径，这是最可靠的方法
+        # 使用 Windows API 获取当前进程的可执行文件路径
         buffer = ctypes.create_unicode_buffer(2048)
         ctypes.windll.kernel32.GetModuleFileNameW(None, buffer, len(buffer))
-        BASE_DIR = os.path.dirname(buffer.value)
+        EXECUTABLE_PATH = buffer.value
+        
+        # 最终修复：通过检查可执行文件名来区分脚本模式和打包模式
+        executable_name = os.path.basename(EXECUTABLE_PATH).lower()
+        if executable_name in ('python.exe', 'pythonw.exe'):
+            # --- 脚本模式 ---
+            # 在脚本模式下，基础目录是 main.py 文件所在的目录
+            BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        else:
+            # --- 打包模式 ---
+            # 在打包模式下，基础目录是 .exe 文件所在的目录
+            BASE_DIR = os.path.dirname(EXECUTABLE_PATH)
     else:
         # 为非 Windows 系统提供回退
         if getattr(sys, 'frozen', False):
-            BASE_DIR = os.path.dirname(sys.executable)
+            EXECUTABLE_PATH = sys.executable
+            BASE_DIR = os.path.dirname(EXECUTABLE_PATH)
         else:
-            BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+            # __file__ is not defined in interactive interpreter, so we fallback to sys.argv[0]
+            script_path = __file__ if "__file__" in locals() else sys.argv[0]
+            EXECUTABLE_PATH = os.path.abspath(script_path)
+            BASE_DIR = os.path.dirname(EXECUTABLE_PATH)
 except Exception:
     # 最终回退方案
     BASE_DIR = os.getcwd()
+    EXECUTABLE_PATH = sys.executable
 
 # --- 更改工作目录 ---
 # 这对于单文件模式下查找外部配置文件/语言文件至关重要。
@@ -132,7 +148,7 @@ def main():
     if os.name == 'nt':
         # 1. 检查管理员权限
         if not is_admin():
-            run_as_admin(BASE_DIR)
+            run_as_admin(EXECUTABLE_PATH, BASE_DIR)
             sys.exit(1)
         
         # 2. 检查是否已有实例在运行
