@@ -1,6 +1,6 @@
 {
     "language": "zh",
-    "start_on_boot": false,
+    "start_on_boot": true,
     "active_profile_name": "Config 1",
     "window_geometry": "01d9d0cb000300000000024b0000026f000006c80000052a0000024b0000026f000006c80000052a00000000000000000a000000024b0000026f000006c80000052a",
     "profile_order": [

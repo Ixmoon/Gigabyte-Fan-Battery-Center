@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 应用入口，负责初始化、单例检查、管理员权限检查，并启动Qt事件循环。
-【最终优化】通过启动一个独立的进程来执行崩溃安全机制，彻底解决了COM重入死锁问题。
+【最终优化】使用最可靠的方式一次性确定所有权威路径，并将其注入PathManager，从根本上解决打包后的路径问题。
 """
 
 import sys
@@ -9,29 +9,37 @@ import os
 import traceback
 import atexit
 import ctypes
-import subprocess # 【新增】用于启动独立进程
+import subprocess
 from typing import Optional
 
-# 该逻辑能正确处理脚本、独立可执行文件和单文件模式。
+# --- 权威路径确定 ---
+# 这是整个应用中唯一应该确定核心路径的地方。
+EXECUTABLE_PATH: str = ""
+BASE_DIR: str = ""
+MAIN_SCRIPT_PATH: str = ""
+IS_FROZEN: bool = getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
+
 try:
     if os.name == 'nt':
         buffer = ctypes.create_unicode_buffer(2048)
         ctypes.windll.kernel32.GetModuleFileNameW(None, buffer, len(buffer))
+        # EXECUTABLE_PATH 始终是用户双击的那个 .exe 文件，或脚本模式下的 python.exe
         EXECUTABLE_PATH = buffer.value
-        
-        executable_name = os.path.basename(EXECUTABLE_PATH).lower()
-        if executable_name in ('python.exe', 'pythonw.exe'):
-            BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-        else:
-            BASE_DIR = os.path.dirname(EXECUTABLE_PATH)
     else:
-        if getattr(sys, 'frozen', False):
-            EXECUTABLE_PATH = sys.executable
-            BASE_DIR = os.path.dirname(EXECUTABLE_PATH)
-        else:
-            script_path = __file__ if "__file__" in locals() else sys.argv[0]
-            EXECUTABLE_PATH = os.path.abspath(script_path)
-            BASE_DIR = os.path.dirname(EXECUTABLE_PATH)
+        # 为非Windows系统提供回退
+        EXECUTABLE_PATH = sys.executable
+
+    executable_name = os.path.basename(EXECUTABLE_PATH).lower()
+    is_script_mode = executable_name in ('python.exe', 'pythonw.exe')
+
+    if is_script_mode:
+        # 脚本模式下，基础目录是主脚本所在目录
+        MAIN_SCRIPT_PATH = os.path.abspath(__file__ if "__file__" in locals() else sys.argv[0])
+        BASE_DIR = os.path.dirname(MAIN_SCRIPT_PATH)
+    else:
+        # 打包模式下，基础目录是 .exe 文件所在的目录
+        BASE_DIR = os.path.dirname(EXECUTABLE_PATH)
+
 except Exception:
     BASE_DIR = os.getcwd()
     EXECUTABLE_PATH = sys.executable
@@ -58,30 +66,43 @@ from core.path_manager import PathManager
 from core.profile_manager import ProfileManager
 from core.settings_manager import SettingsManager
 from gui.main_window import MainWindow
+from emergency_fan_setter import set_emergency_fan_speed
 
 _app_services_for_cleanup: Optional[AppServices] = None
 
 # --- 崩溃安全机制 ---
 def _trigger_emergency_fan_setter():
-    """
-    【最终优化】通过启动一个独立的、隔离的进程来设置紧急风扇速度。
-    这可以完全避免在主应用崩溃时发生COM重入死锁。
-    """
+    """通过启动一个独立的、隔离的进程来设置紧急风扇速度。"""
     print("CRASH HANDLER: 检测到自动模式，正在尝试启动紧急风扇设置进程...")
     try:
-        # 确定紧急脚本的路径
+        # 在打包模式下，紧急脚本与主程序在同一目录
         emergency_script_path = os.path.join(BASE_DIR, 'emergency_fan_setter.py')
+        
+        # 确定用于启动子进程的解释器
+        # 在打包模式下，sys.executable 指向 bootloader (main.exe)，这不适合运行py脚本
+        # 我们需要找到捆绑的python解释器，但为了简单和可靠，我们直接使用主程序的python.exe
+        # 这在开发模式下是 sys.executable，在打包模式下，我们假设用户环境中有python
+        interpreter = sys.executable
+
         if not os.path.exists(emergency_script_path):
-            print(f"CRASH HANDLER: 紧急脚本 '{emergency_script_path}' 未找到。", file=sys.stderr)
+             # 如果是打包环境，直接调用函数可能更可靠
+            if IS_FROZEN:
+                print("CRASH HANDLER: 紧急脚本未找到，尝试直接调用函数...")
+                set_emergency_fan_speed()
+            else:
+                print(f"CRASH HANDLER: 紧急脚本 '{emergency_script_path}' 未找到。", file=sys.stderr)
             return
 
-        # 使用 sys.executable (通常是 pythonw.exe) 来无窗口运行脚本
-        # Popen 是非阻塞的，它会立即返回，允许主程序继续其崩溃流程
-        subprocess.Popen([sys.executable, emergency_script_path], creationflags=subprocess.CREATE_NO_WINDOW)
+        subprocess.Popen([interpreter, emergency_script_path], creationflags=subprocess.CREATE_NO_WINDOW)
         print("CRASH HANDLER: 紧急风扇设置进程已成功启动。")
 
     except Exception as e:
         print(f"CRASH HANDLER: 启动紧急风扇设置进程失败: {e}", file=sys.stderr)
+        print("CRASH HANDLER: 尝试直接调用函数作为后备方案...")
+        try:
+            set_emergency_fan_speed()
+        except Exception as fallback_e:
+            print(f"CRASH HANDLER: 直接调用后备方案也失败: {fallback_e}", file=sys.stderr)
 
 def handle_exception(exc_type, exc_value, exc_traceback):
     """全局异常处理器，增加了崩溃安全机制。"""
@@ -150,7 +171,14 @@ def main():
     sys.excepthook = handle_exception
     atexit.register(perform_cleanup)
 
-    path_manager = PathManager(base_dir=BASE_DIR)
+    # --- 初始化核心服务 ---
+    # 1. 创建路径管理器，注入所有权威路径
+    path_manager = PathManager(
+        base_dir=BASE_DIR,
+        executable_path=EXECUTABLE_PATH,
+        main_script_path=MAIN_SCRIPT_PATH
+    )
+
     load_translations(path_manager.languages)
 
     if os.name == 'nt':

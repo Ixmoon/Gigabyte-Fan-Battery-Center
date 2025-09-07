@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 OS级别的工具函数，主要用于Windows特定的操作。
-【最终优化】修复了脚本模式下提权可能失败的问题。
+【最终优化】移除了不可靠的路径辅助函数，逻辑现在更集中和健壮。
 """
 
 import sys
@@ -9,7 +9,6 @@ import os
 import ctypes
 import subprocess
 
-# 从本地化导入错误消息
 from .localization import tr
 
 def is_admin() -> bool:
@@ -19,15 +18,13 @@ def is_admin() -> bool:
             return ctypes.windll.shell32.IsUserAnAdmin() != 0
         except AttributeError:
             print("警告: 无法通过ctypes确定管理员状态。", file=sys.stderr)
-            return False # 如果检查失败，则假定不是管理员
+            return False
     else:
         return True
 
 def run_as_admin(executable_path: str, base_dir: str):
     """
     尝试在Windows上以管理员权限重新启动应用。
-    如果成功，当前的非管理员实例将退出。
-    如果提权失败或被取消，它会显示一个错误并退出。
     """
     if os.name != 'nt':
         return
@@ -39,34 +36,26 @@ def run_as_admin(executable_path: str, base_dir: str):
     error_msg_base = tr("elevation_error_msg")
 
     try:
-        # 【修复】使用可执行文件名来区分打包模式和脚本模式，不再依赖不可靠的 sys.frozen
-        is_frozen = os.path.basename(executable_path).lower() not in ('python.exe', 'pythonw.exe')
+        is_script_mode = os.path.basename(executable_path).lower() in ('python.exe', 'pythonw.exe')
 
-        if is_frozen:
-            # --- 打包模式 ---
-            executable = executable_path
-            params = subprocess.list2cmdline(sys.argv[1:])
+        if is_script_mode:
+            # 在脚本模式下，我们需要找到主脚本的路径
+            main_script_path = os.path.abspath(sys.argv[0])
+            params = f'"{main_script_path}" {subprocess.list2cmdline(sys.argv[1:])}'
         else:
-            # --- 脚本模式 (正确的逻辑) ---
-            executable = executable_path  # 这是 python.exe 的路径
-            # __file__ 可能在某些上下文中不可用，使用 sys.argv[0] 作为回退
-            script_path = os.path.abspath(__file__ if "__file__" in locals() else sys.argv[0])
-            params = f'"{script_path}" {subprocess.list2cmdline(sys.argv[1:])}'
+            params = subprocess.list2cmdline(sys.argv[1:])
 
-        # 使用正确的 executable 和 base_dir (作为工作目录) 来执行
-        result = ctypes.windll.shell32.ShellExecuteW(None, "runas", executable, params, base_dir, 1)
+        result = ctypes.windll.shell32.ShellExecuteW(None, "runas", executable_path, params, base_dir, 1)
 
         if result <= 32:
-            # 错误代码 <= 32。常见错误：1223 (用户取消)
             if result == 1223:
-                sys.exit(1) # 用户取消UAC，静默退出
+                sys.exit(1)
             else:
-                detailed_error = f"ShellExecuteW failed with code: {result}.\n\nAttempted to run:\n{executable}"
+                detailed_error = f"ShellExecuteW failed with code: {result}."
                 final_error_msg = f"{error_msg_base}\n\n{detailed_error}"
                 ctypes.windll.user32.MessageBoxW(0, final_error_msg, error_title, 0x10 | 0x1000)
                 sys.exit(1)
         else:
-            # 提权成功，退出非管理员实例
             sys.exit(0)
 
     except Exception as e:
@@ -75,17 +64,5 @@ def run_as_admin(executable_path: str, base_dir: str):
         ctypes.windll.user32.MessageBoxW(0, final_error_msg, error_title, 0x10 | 0x1000)
         sys.exit(1)
 
-def get_application_executable_path() -> str:
-    """获取当前运行的可执行文件（python.exe或冻结的.exe）的完整路径。"""
-    return sys.executable
-
-def get_application_script_path_for_task() -> str:
-    """
-    获取主Python脚本文件的绝对路径。
-    如果作为冻结的可执行文件运行，则返回空字符串。
-    在非冻结状态下为任务计划程序所需。
-    """
-    if getattr(sys, 'frozen', False):
-        return ""
-    else:
-        return os.path.abspath(sys.argv[0])
+# 【移除】删除了 get_application_executable_path 和 get_application_script_path_for_task
+# 这两个函数是导致路径问题的根源，所有路径现在都应从 PathManager 获取。

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 用于与Windows任务计划程序交互以管理应用启动的函数。
-现在使用外部XML模板以增强灵活性。
+【最终优化】现在完全依赖于从PathManager传入的权威路径，确保了在任何模式下都能创建正确的任务。
 """
 import os
 import sys
@@ -10,7 +10,6 @@ import tempfile
 from typing import Tuple
 from config.settings import TASK_SCHEDULER_NAME, STARTUP_ARG_MINIMIZED
 from core.path_manager import PathManager
-from .system_utils import get_application_executable_path, get_application_script_path_for_task
 from .localization import tr
 
 def _run_schtasks(args: list[str]) -> Tuple[bool, str]:
@@ -35,10 +34,7 @@ def _run_schtasks(args: list[str]) -> Tuple[bool, str]:
         return False, f"schtasks command failed: {error_output.strip()}"
 
 def _get_default_task_xml_content() -> bytes:
-    """
-    返回一个带有BOM前缀、utf-16-le编码的字节序列。
-    这是确保内容正确的'schtasks'最可靠的方法。
-    """
+    """返回一个带有BOM前缀、utf-16-le编码的字节序列。"""
     xml_str = r'''<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
@@ -88,20 +84,17 @@ def _get_default_task_xml_content() -> bytes:
   </Actions>
 </Task>
 '''
-    # 添加BOM前缀并编码为UTF-16 Little Endian
     return b'\xff\xfe' + xml_str.encode('utf-16-le')
 
 def create_startup_task(paths: PathManager):
     """
-    使用外部XML模板创建或更新Windows任务计划程序任务。
-    如果模板不存在，则创建一个默认模板。
+    使用外部XML模板和从PathManager获取的权威路径创建或更新Windows任务。
     """
     xml_path = paths.task_template
 
     if not os.path.exists(xml_path):
         try:
             default_xml_bytes = _get_default_task_xml_content()
-            # 以二进制模式写入模板文件以保留BOM和编码
             with open(xml_path, 'wb') as f:
                 f.write(default_xml_bytes)
             print(f"默认任务模板已创建于: {xml_path}")
@@ -109,23 +102,20 @@ def create_startup_task(paths: PathManager):
             raise Exception(f"创建默认任务模板失败: {e}")
 
     try:
-        # 以二进制模式读取模板文件并用'utf-16'解码
         with open(xml_path, 'rb') as f:
             xml_template_bytes = f.read()
-        # Python的'utf-16'解码器能正确处理BOM
         xml_template = xml_template_bytes.decode('utf-16')
     except IOError as e:
         raise Exception(f"读取任务模板文件失败: {e}")
 
-    app_exe_path = get_application_executable_path()
-    app_script_path = get_application_script_path_for_task()
-    is_frozen = not bool(app_script_path)
-    
-    command = app_exe_path
-    if not is_frozen:
-        command = sys.executable
-        arguments = f'"{app_script_path}" {STARTUP_ARG_MINIMIZED}'
+    # 【最终修复】从PathManager获取所有路径信息，不再自行猜测
+    if paths.is_running_as_script():
+        # 脚本模式
+        command = sys.executable # python.exe
+        arguments = f'"{paths.main_script_path}" {STARTUP_ARG_MINIMIZED}'
     else:
+        # 打包模式
+        command = paths.executable_path # main.exe
         arguments = STARTUP_ARG_MINIMIZED
         
     working_dir = paths.base_dir
