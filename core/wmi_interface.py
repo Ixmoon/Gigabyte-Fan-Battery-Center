@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-提供一个健壮、线程安全的WMI交互接口，用于控制技嘉特定的风扇和电池设置。
-管理一个后台工作线程处理所有阻塞的WMI调用，确保主应用保持响应。
+【重构】提供一个极其轻薄、扁平化的WMI交互接口。
+该模块负责：
+1. 管理一个后台工作线程，该线程主动、定期地轮询核心传感器（温度、转速），并将结果缓存。
+2. 提供一个通用的、阻塞式的 `execute_method` 来执行所有WMI写入操作。
+3. 提供三个高度优化的只读方法，分别用于UI更新、自动温控和全局刷新。
 """
 
 import threading
@@ -27,21 +30,15 @@ from config.settings import (
     WMI_NAMESPACE, DEFAULT_WMI_GET_CLASS, DEFAULT_WMI_SET_CLASS,
     WMI_GET_CPU_TEMP, WMI_GET_GPU_TEMP1, WMI_GET_GPU_TEMP2,
     WMI_GET_RPM1, WMI_GET_RPM2, WMI_GET_CHARGE_POLICY, WMI_GET_CHARGE_STOP,
-    WMI_SET_CUSTOM_FAN_STATUS, WMI_SET_SUPER_QUIET, WMI_SET_AUTO_FAN_STATUS,
-    WMI_SET_STEP_FAN_STATUS, WMI_SET_CUSTOM_FAN_SPEED, WMI_SET_GPU_FAN_DUTY,
-    WMI_SET_CHARGE_POLICY, WMI_SET_CHARGE_STOP,
     WMI_WORKER_STOP_SIGNAL, WMI_REQUEST_TIMEOUT_S,
     TEMP_READ_ERROR_VALUE, RPM_READ_ERROR_VALUE,
     CHARGE_POLICY_READ_ERROR_VALUE, CHARGE_THRESHOLD_READ_ERROR_VALUE,
-    MIN_CHARGE_PERCENT, MAX_CHARGE_PERCENT,
-    WMI_ACTION_GET_CPU_TEMP, WMI_ACTION_GET_GPU_TEMP, WMI_ACTION_GET_RPM,
-    WMI_ACTION_GET_CHARGE_POLICY, WMI_ACTION_GET_CHARGE_STOP, WMI_ACTION_GET_ALL_SENSORS,
-    WMI_ACTION_GET_NON_TEMP_SENSORS, WMI_ACTION_CONFIGURE_CUSTOM_FAN, WMI_ACTION_CONFIGURE_BIOS_FAN,
-    WMI_ACTION_SET_FAN_SPEED_RAW, WMI_ACTION_SET_CHARGE_POLICY, WMI_ACTION_SET_CHARGE_STOP
+    MIN_CHARGE_PERCENT, MAX_CHARGE_PERCENT
 )
 
 # 类型提示
 WMIResult = Tuple[Optional[Any], Optional[Exception]]
+# 【重构】请求现在是方法名和参数，不再需要复杂的action
 WMIRequest = Tuple[str, Dict[str, Any], queue.Queue]
 
 # --- 自定义异常以实现清晰的错误处理 ---
@@ -68,7 +65,7 @@ class WMICommandError(WMIError):
 # ==============================================================================
 class WMIWorker(threading.Thread):
     """
-    后台线程，处理所有阻塞的WMI调用，确保主应用线程永不冻结。
+    后台线程，处理所有阻塞的WMI调用，并主动轮询核心传感器数据。
     """
     def __init__(self, request_queue: queue.Queue, wmi_get_class: str, wmi_set_class: str):
         super().__init__(name="WMIWorkerThread", daemon=True)
@@ -81,22 +78,12 @@ class WMIWorker(threading.Thread):
         self._com_initialized: bool = False
         self.initialization_complete = threading.Event()
         self.initialization_error: Optional[Exception] = None
-
-        # --- 动作分派表，用于更清晰的请求处理 ---
-        self._action_handlers: Dict[str, Callable] = {
-            WMI_ACTION_GET_CPU_TEMP: self._handle_get_cpu_temp,
-            WMI_ACTION_GET_GPU_TEMP: self._handle_get_gpu_temp,
-            WMI_ACTION_GET_RPM: self._handle_get_rpm,
-            WMI_ACTION_GET_CHARGE_POLICY: self._handle_get_charge_policy,
-            WMI_ACTION_GET_CHARGE_STOP: self._handle_get_charge_stop,
-            WMI_ACTION_GET_ALL_SENSORS: self._handle_get_all_sensors,
-            WMI_ACTION_GET_NON_TEMP_SENSORS: self._handle_get_non_temp_sensors,
-            WMI_ACTION_CONFIGURE_CUSTOM_FAN: self._handle_configure_custom_fan,
-            WMI_ACTION_CONFIGURE_BIOS_FAN: self._handle_configure_bios_fan,
-            WMI_ACTION_SET_FAN_SPEED_RAW: self._handle_set_fan_speed_raw,
-            WMI_ACTION_SET_CHARGE_POLICY: self._handle_set_charge_policy,
-            WMI_ACTION_SET_CHARGE_STOP: self._handle_set_charge_stop,
-        }
+        
+        # --- 后台轮询相关 ---
+        self._stop_event = threading.Event()
+        self._polling_interval_s = 1.0  # UI轮询间隔
+        self._latest_core_sensor_data: Dict[str, Any] = {}
+        self._data_lock = threading.Lock()
 
     # --- 初始化和清理 ---
     def _init_wmi(self) -> bool:
@@ -146,203 +133,167 @@ class WMIWorker(threading.Thread):
 
     # --- 核心逻辑 ---
     def run(self):
-        """WMI工作线程的主循环。"""
-        try:
-            if not self._init_wmi():
-                self.initialization_complete.set() # 发出失败信号以解除主线程阻塞
-                return
+        """WMI工作线程的主循环，现在包含主动轮询逻辑。"""
+        if not self._init_wmi():
+            self.initialization_complete.set()
+            return
 
-            self.initialization_complete.set() # 在进入循环前发出成功信号
+        self.initialization_complete.set()
 
-            while True:
-                request = self._request_queue.get()
+        while not self._stop_event.is_set():
+            try:
+                # 1. 处理外部请求（例如Setters）
+                request = self._request_queue.get(timeout=self._polling_interval_s)
                 if request == WMI_WORKER_STOP_SIGNAL:
                     break
-                if isinstance(request, tuple) and len(request) == 3:
-                    self._process_request(request)
-                else:
-                    print(f"WMI Worker: 收到无效的请求格式: {request}", file=sys.stderr)
+                self._process_request(request)
+            except queue.Empty:
+                # 2. 如果没有请求，执行后台轮询
+                self._poll_core_sensors()
+        
+        self._cleanup_com()
+
+    def stop(self):
+        """设置停止事件以终止主循环。"""
+        self._stop_event.set()
+
+    def get_latest_core_sensor_data(self) -> Dict[str, Any]:
+        """线程安全地获取最新的传感器数据缓存。"""
+        with self._data_lock:
+            return self._latest_core_sensor_data.copy()
+
+    def _poll_core_sensors(self):
+        """在后台执行核心传感器（温度、转速）的轮询并更新缓存。"""
+        try:
+            data = self._get_core_sensors()
+            with self._data_lock:
+                self._latest_core_sensor_data = data
         except Exception as e:
-            print(f"WMI Worker: 主循环中未处理的异常: {e}", file=sys.stderr)
-        finally:
-            self._wmi_get_obj = self._wmi_set_obj = self._wmi_conn = None
-            self._cleanup_com()
+            print(f"WMI后台轮询失败: {e}", file=sys.stderr)
+            # 在失败时也更新缓存，以反映错误状态
+            with self._data_lock:
+                self._latest_core_sensor_data = {
+                    'cpu_temp': TEMP_READ_ERROR_VALUE, 'gpu_temp': TEMP_READ_ERROR_VALUE,
+                    'fan1_rpm': RPM_READ_ERROR_VALUE, 'fan2_rpm': RPM_READ_ERROR_VALUE
+                }
 
     def _process_request(self, request: WMIRequest):
-        """使用分派表处理单个请求。"""
-        action, params, callback_queue = request
+        """
+        【重构】处理单个外部请求。不再需要分派表。
+        """
+        method_name, params, callback_queue = request
         result, exception = None, None
         try:
-            handler = self._action_handlers.get(action)
-            if handler:
-                result = handler(params)
-            else:
-                exception = ValueError(f"请求了未知的WMI动作: {action}")
+            # 根据方法名决定是调用Getter还是Setter
+            if method_name.startswith("Set"):
+                result = self._execute_set_method(method_name, **params)
+            # 【重构】为特殊的合并查询提供专用处理
+            elif method_name == "_get_all_sensors":
+                result = self._get_all_sensors()
+            elif method_name == "_get_temperatures":
+                result = self._get_temperatures()
+            else: # 默认为Getter
+                result = self._execute_get_method(method_name, **params)
         except Exception as e:
             exception = e
-        self._send_response(callback_queue, result, exception)
-
-    def _send_response(self, callback_queue: queue.Queue, result: Any, exception: Optional[Exception]):
-        """将结果或异常放入回调队列。"""
+        
         try:
             callback_queue.put((result, exception), block=False)
         except queue.Full:
             print("警告: WMI响应队列意外已满。正在丢弃响应。", file=sys.stderr)
 
     # --- WMI方法执行和值解析 ---
-    def _execute_wmi_method(self, obj: Any, method_name: str, **kwargs) -> Any:
-        """在WMI对象实例上执行方法，引发详细错误。"""
-        if not obj:
-            raise WMIConnectionError("WMI对象不可用，无法执行方法。")
-        if not hasattr(obj, method_name):
-            raise AttributeError(f"WMI对象没有方法 '{method_name}'")
-        
-        # 确保传递给WMI的数值是浮点数，以提高兼容性
-        if 'Data' in kwargs and isinstance(kwargs['Data'], (int, float)):
-             kwargs['Data'] = float(kwargs['Data'])
-             
-        method_func = getattr(obj, method_name)
+    def _execute_get_method(self, method_name: str, **kwargs) -> Any:
+        """在GB_WMIACPI_Get对象上执行方法。"""
+        if not self._wmi_get_obj: raise WMIConnectionError("WMI Get对象不可用。")
+        method_func = getattr(self._wmi_get_obj, method_name)
         return method_func(**kwargs)
 
-    def _parse_wmi_result(self, result: Any) -> Optional[Any]:
-        """从典型的WMI方法结果元组中提取主值。"""
-        if isinstance(result, tuple) and len(result) > 0:
-            return result[0]
-        return result
+    def _execute_set_method(self, method_name: str, **kwargs) -> Any:
+        """在GB_WMIACPI_Set对象上执行方法。"""
+        if not self._wmi_set_obj: raise WMIConnectionError("WMI Set对象不可用。")
+        method_func = getattr(self._wmi_set_obj, method_name)
+        return method_func(**kwargs)
+
+    def _parse_and_validate(self, raw_result: Any, validator: Callable) -> Any:
+        """辅助函数，用于解析WMI元组结果并进行验证。"""
+        value = raw_result[0] if isinstance(raw_result, tuple) and len(raw_result) > 0 else raw_result
+        return validator(value)
 
     def _validate_temp(self, value: Any) -> float:
-        """验证并清理温度读数。"""
         try:
             temp = float(value)
             return temp if 0 < temp < 150 and not math.isnan(temp) else TEMP_READ_ERROR_VALUE
-        except (ValueError, TypeError, IndexError):
-            return TEMP_READ_ERROR_VALUE
+        except (ValueError, TypeError, IndexError): return TEMP_READ_ERROR_VALUE
 
     def _validate_rpm(self, value: Any) -> int:
-        """验证并清理RPM读数，包括字节交换。"""
         try:
             raw_int = int(value)
             if 0 <= raw_int <= 65535:
-                low_byte = raw_int & 0xFF
-                high_byte = (raw_int >> 8) & 0xFF
+                low_byte = raw_int & 0xFF; high_byte = (raw_int >> 8) & 0xFF
                 corrected_rpm = (low_byte << 8) | high_byte
                 return corrected_rpm if corrected_rpm > 50 else 0
             return RPM_READ_ERROR_VALUE
-        except (ValueError, TypeError):
-            return RPM_READ_ERROR_VALUE
+        except (ValueError, TypeError): return RPM_READ_ERROR_VALUE
 
     def _validate_int(self, value: Any, default_error_val: int) -> int:
-        """验证并清理通用整数读数。"""
-        try:
-            return int(value)
-        except (ValueError, TypeError):
-            return default_error_val
+        try: return int(value)
+        except (ValueError, TypeError): return default_error_val
 
-    # --- 动作处理器 (从分派表调用) ---
-    def _handle_get_cpu_temp(self, params: Dict) -> float:
-        raw_res = self._execute_wmi_method(self._wmi_get_obj, WMI_GET_CPU_TEMP)
-        return self._validate_temp(self._parse_wmi_result(raw_res))
-
-    def _handle_get_gpu_temp(self, params: Dict) -> float:
+    # --- 合并查询的内部实现 ---
+    def _get_temperatures(self) -> Dict[str, float]:
+        """仅获取温度。"""
+        cpu_temp = self._parse_and_validate(self._execute_get_method(WMI_GET_CPU_TEMP), self._validate_temp)
+        
         temps = []
         for method in [WMI_GET_GPU_TEMP1, WMI_GET_GPU_TEMP2]:
             try:
-                raw_res = self._execute_wmi_method(self._wmi_get_obj, method)
-                temp = self._validate_temp(self._parse_wmi_result(raw_res))
-                if temp != TEMP_READ_ERROR_VALUE:
-                    temps.append(temp)
-            except AttributeError: # 如果方法不存在则忽略
-                pass
-        return max(temps) if temps else TEMP_READ_ERROR_VALUE
+                temp = self._parse_and_validate(self._execute_get_method(method), self._validate_temp)
+                if temp != TEMP_READ_ERROR_VALUE: temps.append(temp)
+            except AttributeError: pass
+        gpu_temp = max(temps) if temps else TEMP_READ_ERROR_VALUE
+        
+        return {'cpu_temp': cpu_temp, 'gpu_temp': gpu_temp}
 
-    def _handle_get_rpm(self, params: Dict) -> int:
-        method_name = params["method_name"]
-        raw_res = self._execute_wmi_method(self._wmi_get_obj, method_name)
-        return self._validate_rpm(self._parse_wmi_result(raw_res))
+    def _get_core_sensors(self) -> Dict[str, Any]:
+        """获取温度和转速，用于后台轮询。"""
+        data = self._get_temperatures()
+        data['fan1_rpm'] = self._parse_and_validate(self._execute_get_method(WMI_GET_RPM1), self._validate_rpm)
+        data['fan2_rpm'] = self._parse_and_validate(self._execute_get_method(WMI_GET_RPM2), self._validate_rpm)
+        return data
 
-    def _handle_get_charge_policy(self, params: Dict) -> int:
-        raw_res = self._execute_wmi_method(self._wmi_get_obj, WMI_GET_CHARGE_POLICY)
-        return self._validate_int(self._parse_wmi_result(raw_res), CHARGE_POLICY_READ_ERROR_VALUE)
-
-    def _handle_get_charge_stop(self, params: Dict) -> int:
-        raw_res = self._execute_wmi_method(self._wmi_get_obj, WMI_GET_CHARGE_STOP)
-        return self._validate_int(self._parse_wmi_result(raw_res), CHARGE_THRESHOLD_READ_ERROR_VALUE)
-
-    def _handle_get_all_sensors(self, params: Dict) -> Dict[str, Any]:
-        """在单个操作中处理组合的传感器读取动作。"""
-        return {
-            'cpu_temp': self._handle_get_cpu_temp({}),
-            'gpu_temp': self._handle_get_gpu_temp({}),
-            'fan1_rpm': self._handle_get_rpm({"method_name": WMI_GET_RPM1}),
-            'fan2_rpm': self._handle_get_rpm({"method_name": WMI_GET_RPM2}),
-            'charge_policy': self._handle_get_charge_policy({}),
-            'charge_threshold': self._handle_get_charge_stop({})
-        }
-
-    def _handle_get_non_temp_sensors(self, params: Dict) -> Dict[str, Any]:
-        """处理除温度外的传感器读取。"""
-        return {
-            'fan1_rpm': self._handle_get_rpm({"method_name": WMI_GET_RPM1}),
-            'fan2_rpm': self._handle_get_rpm({"method_name": WMI_GET_RPM2}),
-            'charge_policy': self._handle_get_charge_policy({}),
-            'charge_threshold': self._handle_get_charge_stop({})
-        }
-
-    def _handle_configure_custom_fan(self, params: Dict) -> bool:
-        self._execute_wmi_method(self._wmi_set_obj, WMI_SET_CUSTOM_FAN_STATUS, Data=1.0)
-        self._execute_wmi_method(self._wmi_set_obj, WMI_SET_SUPER_QUIET, Data=0.0)
-        self._execute_wmi_method(self._wmi_set_obj, WMI_SET_AUTO_FAN_STATUS, Data=0.0)
-        self._execute_wmi_method(self._wmi_set_obj, WMI_SET_STEP_FAN_STATUS, Data=0.0)
-        return True
-
-    def _handle_configure_bios_fan(self, params: Dict) -> bool:
-        self._execute_wmi_method(self._wmi_set_obj, WMI_SET_AUTO_FAN_STATUS, Data=1.0)
-        self._execute_wmi_method(self._wmi_set_obj, WMI_SET_CUSTOM_FAN_STATUS, Data=0.0)
-        return True
-
-    def _handle_set_fan_speed_raw(self, params: Dict) -> bool:
-        speed_value = params["speed_value"]
-        self._execute_wmi_method(self._wmi_set_obj, WMI_SET_CUSTOM_FAN_SPEED, Data=speed_value)
-        self._execute_wmi_method(self._wmi_set_obj, WMI_SET_GPU_FAN_DUTY, Data=speed_value)
-        return True
-
-    def _handle_set_charge_policy(self, params: Dict) -> bool:
-        policy_value = params["policy_value"]
-        self._execute_wmi_method(self._wmi_set_obj, WMI_SET_CHARGE_POLICY, Data=policy_value)
-        return True
-
-    def _handle_set_charge_stop(self, params: Dict) -> bool:
-        threshold_value = params["threshold_value"]
-        self._execute_wmi_method(self._wmi_set_obj, WMI_SET_CHARGE_STOP, Data=threshold_value)
-        return True
+    def _get_all_sensors(self) -> Dict[str, Any]:
+        """获取所有传感器数据，包括不常变化的电池信息。"""
+        data = self._get_core_sensors()
+        data['charge_policy'] = self._parse_and_validate(self._execute_get_method(WMI_GET_CHARGE_POLICY), lambda v: self._validate_int(v, CHARGE_POLICY_READ_ERROR_VALUE))
+        data['charge_threshold'] = self._parse_and_validate(self._execute_get_method(WMI_GET_CHARGE_STOP), lambda v: self._validate_int(v, CHARGE_THRESHOLD_READ_ERROR_VALUE))
+        return data
 
 # ==============================================================================
 # WMIInterface (公共同步API)
 # ==============================================================================
 class WMIInterface:
     """
-    提供同步、线程安全的WMI操作公共API，隐藏后台工作线程的复杂性。
+    【重构】提供一个极简的、线程安全的WMI操作公共API。
     """
     def __init__(self, get_class=DEFAULT_WMI_GET_CLASS, set_class=DEFAULT_WMI_SET_CLASS):
-        self._wmi_get_class = get_class
-        self._wmi_set_class = set_class
         self._request_queue = queue.Queue(maxsize=50)
         self._worker_thread: Optional[WMIWorker] = None
         self._lock = threading.Lock()
         self._is_running = False
         self._initialization_error: Optional[Exception] = None
+        self._wmi_get_class = get_class
+        self._wmi_set_class = set_class
 
     @property
     def is_running(self) -> bool:
-        """安全地检查工作线程是否被认为是正在运行。"""
         with self._lock:
             return self._is_running and self._worker_thread is not None and self._worker_thread.is_alive()
 
     def start(self) -> bool:
         """启动WMI工作线程并等待其初始化。"""
         with self._lock:
-            if self._is_running:
-                return self._initialization_error is None
+            if self._is_running: return self._initialization_error is None
             if not _wmi_available:
                 self._initialization_error = WMIConnectionError("WMI库未找到。")
                 return False
@@ -352,18 +303,13 @@ class WMIInterface:
             self._worker_thread.start()
             self._is_running = True
 
-        # 等待工作线程完成其初始化尝试。
         self._worker_thread.initialization_complete.wait(timeout=15.0)
 
         with self._lock:
-            # 等待后检查初始化错误。
             if self._worker_thread.initialization_error:
-                self._initialization_error = WMIConnectionError(
-                    f"WMI工作线程初始化失败: {self._worker_thread.initialization_error}"
-                )
+                self._initialization_error = WMIConnectionError(f"WMI工作线程初始化失败: {self._worker_thread.initialization_error}")
                 self._cleanup_worker_nolock()
                 return False
-            # 检查超时或线程死亡。
             if not self._worker_thread.is_alive():
                 self._initialization_error = WMIConnectionError("WMI工作线程未能启动或意外死亡。")
                 self._cleanup_worker_nolock()
@@ -374,171 +320,98 @@ class WMIInterface:
         """向WMI工作线程发送停止信号并等待其退出。"""
         thread_to_join: Optional[WMIWorker] = None
         with self._lock:
-            if not self._is_running or not self._worker_thread:
-                return
+            if not self._is_running or not self._worker_thread: return
             thread_to_join = self._worker_thread
             self._is_running = False
+            self._worker_thread.stop() # 发送停止事件
             try:
-                self._request_queue.put_nowait(WMI_WORKER_STOP_SIGNAL)
-            except queue.Full:
-                print("警告: WMI请求队列已满，无法发送停止信号。", file=sys.stderr)
+                self._request_queue.put_nowait(WMI_WORKER_STOP_SIGNAL) # 唤醒工作线程以检查停止事件
+            except queue.Full: pass
 
         if thread_to_join:
             thread_to_join.join(timeout=WMI_REQUEST_TIMEOUT_S + 2.0)
-            if thread_to_join.is_alive():
-                print("警告: WMI工作线程未能优雅地停止。", file=sys.stderr)
         
         with self._lock:
             self._worker_thread = None
 
     def _cleanup_worker_nolock(self):
-        """内部清理辅助函数。假定锁已被持有。"""
         self._is_running = False
         thread = self._worker_thread
         if thread and thread.is_alive():
-            try:
-                self._request_queue.put_nowait(WMI_WORKER_STOP_SIGNAL)
-            except queue.Full:
-                pass
+            thread.stop()
+            try: self._request_queue.put_nowait(WMI_WORKER_STOP_SIGNAL)
+            except queue.Full: pass
             thread.join(timeout=1.0)
         self._worker_thread = None
 
     def get_initialization_error(self) -> Optional[Exception]:
-        """返回初始化期间遇到的错误（如果有）。"""
-        with self._lock:
-            return self._initialization_error
+        with self._lock: return self._initialization_error
 
-    def _execute_sync(self, action: str, params: Optional[Dict] = None, timeout: float = WMI_REQUEST_TIMEOUT_S) -> Any:
+    def _execute_sync(self, method_name: str, params: Optional[Dict] = None, timeout: float = WMI_REQUEST_TIMEOUT_S) -> Any:
         """
-        向工作线程发送请求并同步等待响应。
-        失败时引发WMIError异常。
+        【重构】通用的同步执行器，向工作线程发送请求并等待响应。
         """
         if not self.is_running:
             raise self._initialization_error or WMIConnectionError("WMI接口未运行。")
 
         result_queue = queue.Queue(maxsize=1)
-        request: WMIRequest = (action, params or {}, result_queue)
+        request: WMIRequest = (method_name, params or {}, result_queue)
 
         try:
             self._request_queue.put(request, block=True, timeout=1.0)
         except queue.Full:
-            raise WMIRequestTimeoutError(f"WMI请求队列已满。动作 '{action}' 被丢弃。")
+            raise WMIRequestTimeoutError(f"WMI请求队列已满。方法 '{method_name}' 被丢弃。")
 
         try:
             result_data, exception_obj = result_queue.get(block=True, timeout=timeout)
             if exception_obj:
-                raise WMICommandError(f"WMI动作 '{action}' 失败。", original_exception=exception_obj)
+                raise WMICommandError(f"WMI方法 '{method_name}' 失败。", original_exception=exception_obj)
             return result_data
         except queue.Empty:
-            raise WMIRequestTimeoutError(f"WMI请求 '{action}' 在 {timeout}s 后超时。")
-        except WMIError as e:
-            raise e # 重新引发我们的特定错误
-        except Exception as e:
-            raise WMIError(f"等待WMI对 '{action}' 的响应时发生意外错误: {e}")
+            raise WMIRequestTimeoutError(f"WMI请求 '{method_name}' 在 {timeout}s 后超时。")
+        except WMIError as e: raise e
+        except Exception as e: raise WMIError(f"等待WMI对 '{method_name}' 的响应时发生意外错误: {e}")
 
     # --- 公共API方法 ---
-    def get_cpu_temperature(self) -> float:
-        """获取当前CPU温度。"""
-        try:
-            return self._execute_sync(WMI_ACTION_GET_CPU_TEMP)
-        except WMIError:
-            return TEMP_READ_ERROR_VALUE
 
-    def get_gpu_temperature(self) -> float:
-        """获取当前GPU温度 (可用传感器的最大值)。"""
-        try:
-            return self._execute_sync(WMI_ACTION_GET_GPU_TEMP)
-        except WMIError:
-            return TEMP_READ_ERROR_VALUE
+    def execute_method(self, method_name: str, **kwargs) -> Any:
+        """
+        【新增】通用的、阻塞式的WMI方法执行器，主要用于Setters。
+        """
+        # 确保传递给WMI的数值是浮点数，以提高兼容性
+        if 'Data' in kwargs and isinstance(kwargs['Data'], (int, float)):
+             kwargs['Data'] = float(kwargs['Data'])
+        return self._execute_sync(method_name, kwargs)
 
-    def get_fan_rpm(self, fan_index: int) -> int:
-        """获取指定风扇索引 (1或2) 的RPM。"""
-        if fan_index not in [1, 2]: return RPM_READ_ERROR_VALUE
-        method = WMI_GET_RPM1 if fan_index == 1 else WMI_GET_RPM2
-        try:
-            return self._execute_sync(WMI_ACTION_GET_RPM, {"method_name": method})
-        except WMIError:
-            return RPM_READ_ERROR_VALUE
+    def get_latest_core_sensor_data(self) -> Dict[str, Any]:
+        """
+        【新增】非阻塞地从缓存获取最新的核心传感器数据（温度、转速）。
+        专为高频UI更新设计，对UI线程零影响。
+        """
+        if not self.is_running or not self._worker_thread: return {}
+        return self._worker_thread.get_latest_core_sensor_data()
 
-    def get_battery_charge_policy(self) -> int:
-        """获取当前电池充电策略代码。"""
+    def get_all_sensors_sync(self) -> Dict[str, Any]:
+        """
+        【新增】阻塞式地获取所有传感器数据（包括电池）。
+        用于启动、窗口激活、设置更改等需要即时反馈的场景。
+        """
         try:
-            return self._execute_sync(WMI_ACTION_GET_CHARGE_POLICY)
+            return self._execute_sync("_get_all_sensors")
         except WMIError:
-            return CHARGE_POLICY_READ_ERROR_VALUE
-
-    def get_battery_charge_threshold(self) -> int:
-        """获取当前电池充电停止阈值百分比。"""
-        try:
-            return self._execute_sync(WMI_ACTION_GET_CHARGE_STOP)
-        except WMIError:
-            return CHARGE_THRESHOLD_READ_ERROR_VALUE
-
-    def get_all_sensors(self) -> Dict[str, Any]:
-        """在单个高效的WMI调用中获取所有传感器读数。"""
-        try:
-            return self._execute_sync(WMI_ACTION_GET_ALL_SENSORS)
-        except WMIError:
-            # 失败时，返回带有默认错误值的字典
             return {
-                'cpu_temp': TEMP_READ_ERROR_VALUE,
-                'gpu_temp': TEMP_READ_ERROR_VALUE,
-                'fan1_rpm': RPM_READ_ERROR_VALUE,
-                'fan2_rpm': RPM_READ_ERROR_VALUE,
+                'cpu_temp': TEMP_READ_ERROR_VALUE, 'gpu_temp': TEMP_READ_ERROR_VALUE,
+                'fan1_rpm': RPM_READ_ERROR_VALUE, 'fan2_rpm': RPM_READ_ERROR_VALUE,
                 'charge_policy': CHARGE_POLICY_READ_ERROR_VALUE,
                 'charge_threshold': CHARGE_THRESHOLD_READ_ERROR_VALUE
             }
 
-    def get_non_temp_sensors(self) -> Dict[str, Any]:
-        """在单个调用中获取所有非温度传感器读数。"""
+    def get_temperatures_sync(self) -> Dict[str, float]:
+        """
+        【新增】阻塞式地仅获取CPU和GPU温度。
+        专为后台自动温控逻辑设计，以最小化WMI开销。
+        """
         try:
-            return self._execute_sync(WMI_ACTION_GET_NON_TEMP_SENSORS)
+            return self._execute_sync("_get_temperatures")
         except WMIError:
-            return {
-                'fan1_rpm': RPM_READ_ERROR_VALUE,
-                'fan2_rpm': RPM_READ_ERROR_VALUE,
-                'charge_policy': CHARGE_POLICY_READ_ERROR_VALUE,
-                'charge_threshold': CHARGE_THRESHOLD_READ_ERROR_VALUE
-            }
-
-    def configure_custom_fan_control(self) -> bool:
-        """设置必要的WMI标志以启用自定义（应用控制的）风扇速度。"""
-        try:
-            return self._execute_sync(WMI_ACTION_CONFIGURE_CUSTOM_FAN)
-        except WMIError as e:
-            print(f"WMI错误 (configure_custom_fan): {e}", file=sys.stderr)
-            return False
-
-    def configure_bios_fan_control(self) -> bool:
-        """设置必要的WMI标志以将风扇控制权交还给BIOS/EC。"""
-        try:
-            return self._execute_sync(WMI_ACTION_CONFIGURE_BIOS_FAN)
-        except WMIError as e:
-            print(f"WMI错误 (configure_bios_fan): {e}", file=sys.stderr)
-            return False
-
-    def set_fan_speed_raw(self, raw_speed_value: float) -> bool:
-        """为两个风扇设置原始速度值 (0-229)。"""
-        raw_speed_value = max(0.0, min(229.0, float(raw_speed_value)))
-        try:
-            return self._execute_sync(WMI_ACTION_SET_FAN_SPEED_RAW, {"speed_value": raw_speed_value})
-        except WMIError as e:
-            print(f"WMI错误 (set_fan_speed_raw): {e}", file=sys.stderr)
-            return False
-
-    def set_battery_charge_policy(self, policy_code: int) -> bool:
-        """使用原始代码设置电池充电策略 (例如, 0 或 4)。"""
-        try:
-            return self._execute_sync(WMI_ACTION_SET_CHARGE_POLICY, {"policy_value": float(policy_code)})
-        except WMIError as e:
-            print(f"WMI错误 (set_charge_policy): {e}", file=sys.stderr)
-            return False
-
-    def set_battery_charge_threshold(self, threshold_percent: int) -> bool:
-        """设置电池充电停止阈值百分比。"""
-        threshold_percent = max(MIN_CHARGE_PERCENT, min(MAX_CHARGE_PERCENT, int(threshold_percent)))
-        try:
-            return self._execute_sync(WMI_ACTION_SET_CHARGE_STOP, {"threshold_value": float(threshold_percent)})
-        except WMIError as e:
-            print(f"WMI错误 (set_charge_stop): {e}", file=sys.stderr)
-            return False
+            return {'cpu_temp': TEMP_READ_ERROR_VALUE, 'gpu_temp': TEMP_READ_ERROR_VALUE}
