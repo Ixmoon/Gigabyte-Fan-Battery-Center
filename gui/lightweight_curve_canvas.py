@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 一个轻量级、基于QPainter的画布，用于显示和编辑风扇曲线。
-此版本替代了Matplotlib，以减小可执行文件的大小并提高性能。
+【最终优化】此版本实现了智能局部绘制和绘图对象缓存，以彻底解决CPU占用激增问题。
+【体验优化】实现了水平和垂直方向的智能联动调整，当拖拽点时，会自动调整相邻点以提供完全自由、流畅的编辑体验。
 """
 
 from .qt import *
@@ -45,7 +46,14 @@ class LightweightCurveCanvas(QWidget):
         self._hovered_point_index: Optional[int] = None
         self._plot_area = QRectF()
         self._margins = {'left': 55, 'top': 20, 'right': 20, 'bottom': 35}
+        
+        # 【优化】缓存绘图对象
         self._background_pixmap: Optional[QPixmap] = None
+        self._cached_cpu_curve_poly: Optional[QPolygonF] = None
+        self._cached_gpu_curve_poly: Optional[QPolygonF] = None
+        self._last_cpu_indicator_region = QRegion()
+        self._last_gpu_indicator_region = QRegion()
+        
         self._cpu_interpolator: Optional[PchipInterpolator] = None
         self._gpu_interpolator: Optional[PchipInterpolator] = None
 
@@ -63,7 +71,6 @@ class LightweightCurveCanvas(QWidget):
         self.state.active_curve_type_changed.connect(self.set_active_curve)
         self.state.cpu_temp_changed.connect(lambda t: self.update_temp_indicators(cpu_temp=t))
         self.state.gpu_temp_changed.connect(lambda t: self.update_temp_indicators(gpu_temp=t))
-        # 使用正确的信号名称
         self.state.is_fan_control_panel_enabled_changed.connect(self.setEnabled)
 
     @Slot(ProfileState)
@@ -91,12 +98,14 @@ class LightweightCurveCanvas(QWidget):
     def _on_cpu_curve_data_changed(self, data: FanTable):
         self.cpu_curve_data = self._validate_and_sort(data)
         self._cpu_interpolator = None
+        self._recache_curves() # 【优化】数据变化时，重新缓存曲线
         self.update()
 
     @Slot(list)
     def _on_gpu_curve_data_changed(self, data: FanTable):
         self.gpu_curve_data = self._validate_and_sort(data)
         self._gpu_interpolator = None
+        self._recache_curves() # 【优化】数据变化时，重新缓存曲线
         self.update()
 
     @Slot()
@@ -104,7 +113,8 @@ class LightweightCurveCanvas(QWidget):
         profile = self.state.get_active_profile()
         if profile:
             self._appearance_settings = profile.to_dict()
-            self._background_pixmap = None
+            self._background_pixmap = None # 外观变化时，背景需要重绘
+            self._recache_curves() # 曲线颜色可能变化，重新缓存
             self.update()
 
     def _get_setting(self, key: str, default_override: Any = None) -> Any:
@@ -122,10 +132,8 @@ class LightweightCurveCanvas(QWidget):
         min_temp = self._get_setting('min_display_temp_c', DEFAULT_MIN_DISPLAY_TEMP_C)
         temp_range = MAX_TEMP_C - min_temp
         
-        if temp_range <= 0:
-            x_ratio = 0.0
-        else:
-            x_ratio = (clip(temp, min_temp, MAX_TEMP_C) - min_temp) / temp_range
+        if temp_range <= 0: x_ratio = 0.0
+        else: x_ratio = (clip(temp, min_temp, MAX_TEMP_C) - min_temp) / temp_range
 
         x = self._plot_area.left() + x_ratio * self._plot_area.width()
         y = self._plot_area.bottom() - ((speed - MIN_FAN_PERCENT) / (MAX_FAN_PERCENT - MIN_FAN_PERCENT)) * self._plot_area.height()
@@ -135,24 +143,23 @@ class LightweightCurveCanvas(QWidget):
         min_temp = self._get_setting('min_display_temp_c', DEFAULT_MIN_DISPLAY_TEMP_C)
         temp_range = MAX_TEMP_C - min_temp
         
-        if self._plot_area.width() == 0:
-            temp = min_temp
-        else:
-            temp = min_temp + ((point.x() - self._plot_area.left()) / self._plot_area.width()) * temp_range
+        if self._plot_area.width() == 0: temp = min_temp
+        else: temp = min_temp + ((point.x() - self._plot_area.left()) / self._plot_area.width()) * temp_range
 
         speed = MIN_FAN_PERCENT + ((self._plot_area.bottom() - point.y()) / self._plot_area.height()) * (MAX_FAN_PERCENT - MIN_FAN_PERCENT)
         return temp, speed
 
     def resizeEvent(self, event: QResizeEvent):
         self._update_plot_area()
-        self._background_pixmap = None
+        self._background_pixmap = None # 尺寸变化时，所有缓存失效
+        self._recache_curves()
         super().resizeEvent(event)
 
-    def paintEvent(self, event):
+    def paintEvent(self, event: QPaintEvent):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        if self._background_pixmap is None:
+        if self._background_pixmap is None or self._background_pixmap.size() != self.size():
             self._background_pixmap = QPixmap(self.size())
             self._background_pixmap.fill(Qt.GlobalColor.transparent)
             bg_painter = QPainter(self._background_pixmap)
@@ -162,8 +169,10 @@ class LightweightCurveCanvas(QWidget):
             bg_painter.end()
         
         painter.drawPixmap(0, 0, self._background_pixmap)
-        self._draw_single_curve(painter, self.gpu_curve_data, 'gpu')
-        self._draw_single_curve(painter, self.cpu_curve_data, 'cpu')
+        
+        self._draw_single_curve(painter, self.gpu_curve_data, 'gpu', self._cached_gpu_curve_poly)
+        self._draw_single_curve(painter, self.cpu_curve_data, 'cpu', self._cached_cpu_curve_poly)
+        
         self._draw_temp_indicators(painter)
         painter.end()
 
@@ -202,7 +211,7 @@ class LightweightCurveCanvas(QWidget):
         painter.setPen(label_color)
         painter.drawText(QRectF(p.x() - 20, self._plot_area.bottom() + 5, 40, 20), Qt.AlignmentFlag.AlignCenter, f"{temp}{tr('celsius_unit')}")
 
-    def _draw_single_curve(self, painter: QPainter, data: FanTable, curve_type: CurveType):
+    def _draw_single_curve(self, painter: QPainter, data: FanTable, curve_type: CurveType, cached_poly: Optional[QPolygonF]):
         if not data: return
         is_active = (self.active_curve_type == curve_type)
         line_color = QColor(self._get_setting(f"{curve_type}_curve_color"))
@@ -213,15 +222,8 @@ class LightweightCurveCanvas(QWidget):
         line_color.setAlphaF(alpha)
         pen = QPen(line_color, line_width); painter.setPen(pen)
         
-        interpolator = self._get_cached_interpolator(curve_type)
-        if interpolator:
-            spline_points = self._get_setting("spline_points", 100)
-            temps_smooth = linspace(interpolator.x[0], interpolator.x[-1], spline_points)
-            speeds_smooth = clip(cast(List[float], interpolator(temps_smooth)), MIN_FAN_PERCENT, MAX_FAN_PERCENT)
-            points = [self._data_to_widget_coords(t, s) for t, s in zip(temps_smooth, cast(List[float], speeds_smooth))]
-            painter.drawPolyline(QPolygonF(points))
-        else:
-            painter.drawPolyline(QPolygonF([self._data_to_widget_coords(p[0], p[1]) for p in data]))
+        if cached_poly:
+            painter.drawPolyline(cached_poly)
         
         if is_active:
             painter.setPen(point_color); painter.setBrush(QBrush(point_color))
@@ -238,9 +240,37 @@ class LightweightCurveCanvas(QWidget):
 
     @Slot()
     def update_temp_indicators(self, cpu_temp: Optional[float] = None, gpu_temp: Optional[float] = None):
-        if cpu_temp is not None: self.state.set_cpu_temp(cpu_temp)
-        if gpu_temp is not None: self.state.set_gpu_temp(gpu_temp)
-        self.update()
+        update_region = QRegion()
+        
+        if cpu_temp is not None:
+            update_region += self._last_cpu_indicator_region
+            new_region = self._calculate_indicator_region(cpu_temp, 'cpu')
+            update_region += new_region
+            self._last_cpu_indicator_region = new_region
+            
+        if gpu_temp is not None:
+            update_region += self._last_gpu_indicator_region
+            new_region = self._calculate_indicator_region(gpu_temp, 'gpu')
+            update_region += new_region
+            self._last_gpu_indicator_region = new_region
+
+        if not update_region.isEmpty():
+            self.update(update_region)
+
+    def _calculate_indicator_region(self, temp: float, curve_type: CurveType) -> QRegion:
+        if temp == TEMP_READ_ERROR_VALUE or not self.get_curve_data(curve_type):
+            return QRegion()
+        
+        speed = self._get_target_speed_for_indicator(temp, curve_type)
+        min_temp = self._get_setting('min_display_temp_c', DEFAULT_MIN_DISPLAY_TEMP_C)
+        
+        if speed != -1 and temp >= min_temp:
+            p = self._data_to_widget_coords(temp, speed)
+            horiz_rect = QRect(int(self._plot_area.left()), int(p.y() - 1), int(p.x() - self._plot_area.left()), 3)
+            vert_rect = QRect(int(p.x() - 1), int(p.y()), 3, int(self._plot_area.bottom() - p.y()))
+            return QRegion(horiz_rect).united(QRegion(vert_rect))
+            
+        return QRegion()
 
     def _draw_temp_indicators(self, painter: QPainter):
         cpu_temp = self.state.get_cpu_temp()
@@ -283,6 +313,21 @@ class LightweightCurveCanvas(QWidget):
             setattr(self, attr_name, interpolator)
             return interpolator
         except Exception: return None
+
+    def _recache_curves(self):
+        self._cached_cpu_curve_poly = self._create_curve_polygon(self.cpu_curve_data, 'cpu')
+        self._cached_gpu_curve_poly = self._create_curve_polygon(self.gpu_curve_data, 'gpu')
+
+    def _create_curve_polygon(self, data: FanTable, curve_type: CurveType) -> Optional[QPolygonF]:
+        if not data: return None
+        interpolator = self._get_cached_interpolator(curve_type)
+        if not interpolator: return None
+        
+        spline_points = self._get_setting("spline_points", 100)
+        temps_smooth = linspace(interpolator.x[0], interpolator.x[-1], spline_points)
+        speeds_smooth = clip(cast(List[float], interpolator(temps_smooth)), MIN_FAN_PERCENT, MAX_FAN_PERCENT)
+        points = [self._data_to_widget_coords(t, s) for t, s in zip(temps_smooth, cast(List[float], speeds_smooth))]
+        return QPolygonF(points)
 
     def get_curve_data(self, curve_type: CurveType) -> FanTable:
         return self.cpu_curve_data if curve_type == 'cpu' else self.gpu_curve_data
@@ -329,7 +374,7 @@ class LightweightCurveCanvas(QWidget):
         if self._dragging_point_index is not None and event.button() == Qt.MouseButton.LeftButton:
             self._dragging_point_index = None
             data = self.get_curve_data(self.active_curve_type)
-            self._enforce_monotonicity_and_uniqueness(data)
+            data.sort(key=lambda p: p[0])
             self._update_curve_in_state(self.active_curve_type, data)
             self.update()
 
@@ -346,7 +391,11 @@ class LightweightCurveCanvas(QWidget):
         temp, speed = self._widget_to_data_coords(pos)
         data = self.get_curve_data(self.active_curve_type)
         data.append([int(round(temp)), int(round(speed))])
-        self._enforce_monotonicity_and_uniqueness(data)
+        data.sort(key=lambda p: p[0])
+        for i in range(1, len(data)):
+            if data[i][1] < data[i-1][1]:
+                data[i][1] = data[i-1][1]
+        
         setattr(self, f"_{self.active_curve_type}_interpolator", None)
         self._update_curve_in_state(self.active_curve_type, data)
         self.update()
@@ -360,29 +409,55 @@ class LightweightCurveCanvas(QWidget):
             self.update()
 
     def _drag_point(self, pos: QPointF):
+        """【最终优化】实现水平和垂直方向的完全自由、智能联动的拖拽。"""
         data = self.get_curve_data(self.active_curve_type)
         idx = self._dragging_point_index
         if idx is None: return
         
         temp, speed = self._widget_to_data_coords(pos)
         
+        # 1. 应用画布边界限制
         min_temp = self._get_setting('min_display_temp_c', DEFAULT_MIN_DISPLAY_TEMP_C)
-        left_limit = data[idx - 1][0] + 1 if idx > 0 else min_temp
-        right_limit = data[idx + 1][0] - 1 if idx < len(data) - 1 else MAX_TEMP_C
-        
-        temp = max(left_limit, min(right_limit, temp))
+        temp = max(min_temp, min(MAX_TEMP_C, temp))
         speed = max(MIN_FAN_PERCENT, min(MAX_FAN_PERCENT, speed))
         
+        # 2. 更新当前点的位置
         data[idx] = [int(round(temp)), int(round(speed))]
         
-        setattr(self, f"_{self.active_curve_type}_interpolator", None)
+        # 3. 【核心】实时强制水平和垂直的连锁反应
+        self._enforce_temperature_separation_during_drag(data, idx)
+        self._enforce_speed_monotonicity_during_drag(data, idx)
         
+        # 4. 更新状态并重绘
+        setattr(self, f"_{self.active_curve_type}_interpolator", None)
+        self._recache_curves()
         self.point_dragged.emit(self.active_curve_type, idx, temp, speed)
         self.update()
 
-    def _enforce_monotonicity_and_uniqueness(self, data: FanTable):
-        if not data: return
-        data.sort(key=lambda p: p[0])
-        for i in range(1, len(data)):
+    def _enforce_speed_monotonicity_during_drag(self, data: FanTable, dragged_index: int):
+        """实时强制风扇速度的单调性（只能增加或持平）。"""
+        # 向前连锁（处理向下拖动）
+        for i in range(dragged_index, 0, -1):
             if data[i][1] < data[i-1][1]:
-                data[i][1] = data[i-1][1]
+                data[i-1][1] = data[i][1]
+        
+        # 向后连锁（处理向上拖动）
+        for i in range(dragged_index, len(data) - 1):
+            if data[i][1] > data[i+1][1]:
+                data[i+1][1] = data[i][1]
+
+    def _enforce_temperature_separation_during_drag(self, data: FanTable, dragged_index: int):
+        """实时强制温度点的最小间距和顺序。"""
+        min_temp = self._get_setting('min_display_temp_c', DEFAULT_MIN_DISPLAY_TEMP_C)
+        
+        # 向后连锁（处理向右拖动，推开右边的点）
+        for i in range(dragged_index, len(data) - 1):
+            if data[i+1][0] <= data[i][0]:
+                new_temp = min(MAX_TEMP_C, data[i][0] + 1)
+                data[i+1][0] = new_temp
+        
+        # 向前连锁（处理向左拖动，推开左边的点）
+        for i in range(dragged_index, 0, -1):
+            if data[i-1][0] >= data[i][0]:
+                new_temp = max(min_temp, data[i][0] - 1)
+                data[i-1][0] = new_temp

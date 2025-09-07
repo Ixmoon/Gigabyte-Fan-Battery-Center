@@ -1,37 +1,37 @@
 {
-    "language": "en",
-    "start_on_boot": true,
-    "active_profile_name": "1",
-    "window_geometry": "01d9d0cb00030000000003430000013700000814000003f2000003430000013700000814000003f200000000000000000a00000003430000013700000814000003f2",
+    "language": "zh",
+    "start_on_boot": false,
+    "active_profile_name": "Config 1",
+    "window_geometry": "01d9d0cb000300000000024b0000026f000006c80000052a0000024b0000026f000006c80000052a00000000000000000a000000024b0000026f000006c80000052a",
     "profile_order": [
-        "1"
+        "Config 1"
     ],
     "profiles": {
-        "1": {
+        "Config 1": {
             "cpu_fan_table": [
                 [
                     50,
                     0
                 ],
                 [
-                    56,
-                    71
+                    60,
+                    15
                 ],
                 [
                     70,
-                    99
+                    25
                 ],
                 [
-                    79,
-                    99
+                    80,
+                    40
                 ],
                 [
-                    86,
-                    99
+                    85,
+                    60
                 ],
                 [
                     90,
-                    99
+                    80
                 ],
                 [
                     95,
@@ -69,9 +69,9 @@
                 ]
             ],
             "fan_mode": "auto",
-            "custom_fan_speed": 50,
-            "battery_charge_policy": "custom",
-            "battery_charge_threshold": 85,
+            "custom_fan_speed": 0,
+            "battery_charge_policy": "bios",
+            "battery_charge_threshold": 80,
             "gui_update_interval_ms": 1000,
             "controller_update_interval_ms": 1500,
             "fan_hysteresis_percent": 5,

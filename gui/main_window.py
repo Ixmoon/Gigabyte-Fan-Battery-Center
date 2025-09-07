@@ -2,6 +2,7 @@
 """
 主应用窗口(QMainWindow)，作为UI的中心控制器，
 连接用户操作与服务，并将状态更新分派给视图组件。
+【最终优化】此类现在负责通知AppServices UI的可见性，以实现智能轮询。
 """
 import sys
 import time
@@ -54,6 +55,7 @@ class MainWindow(QMainWindow):
 
         if self.start_minimized:
             if self.tray_icon: self.tray_icon.show()
+            # 【优化】即使最小化启动，也要正确设置初始UI可见性
             self.app_services.set_ui_visibility(False)
         else:
             self.show()
@@ -225,14 +227,14 @@ class MainWindow(QMainWindow):
             self._is_initialized = True
             QTimer.singleShot(0, lambda: self.window_initialized_signal.emit(int(self.winId())))
         
-        # 调用AppServices中的方法来处理UI可见性变化
+        # 【优化】调用AppServices中的方法来处理UI可见性变化
         self.app_services.set_ui_visibility(True)
         self._start_gui_timer()
         super().showEvent(event)
 
     def hideEvent(self, event: QHideEvent):
         self.gui_update_timer.stop()
-        # 调用AppServices中的方法来处理UI可见性变化
+        # 【优化】调用AppServices中的方法来处理UI可见性变化
         self.app_services.set_ui_visibility(False)
         super().hideEvent(event)
 

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 应用入口，负责初始化、单例检查、管理员权限检查，并启动Qt事件循环。
+【最终优化】通过启动一个独立的进程来执行崩溃安全机制，彻底解决了COM重入死锁问题。
 """
 
 import sys
@@ -8,44 +9,33 @@ import os
 import traceback
 import atexit
 import ctypes
+import subprocess # 【新增】用于启动独立进程
 from typing import Optional
 
-# --- 早期设置: 定义基础目录 (健壮的方法) ---
 # 该逻辑能正确处理脚本、独立可执行文件和单文件模式。
 try:
     if os.name == 'nt':
-        # 使用 Windows API 获取当前进程的可执行文件路径
         buffer = ctypes.create_unicode_buffer(2048)
         ctypes.windll.kernel32.GetModuleFileNameW(None, buffer, len(buffer))
         EXECUTABLE_PATH = buffer.value
         
-        # 最终修复：通过检查可执行文件名来区分脚本模式和打包模式
         executable_name = os.path.basename(EXECUTABLE_PATH).lower()
         if executable_name in ('python.exe', 'pythonw.exe'):
-            # --- 脚本模式 ---
-            # 在脚本模式下，基础目录是 main.py 文件所在的目录
             BASE_DIR = os.path.dirname(os.path.abspath(__file__))
         else:
-            # --- 打包模式 ---
-            # 在打包模式下，基础目录是 .exe 文件所在的目录
             BASE_DIR = os.path.dirname(EXECUTABLE_PATH)
     else:
-        # 为非 Windows 系统提供回退
         if getattr(sys, 'frozen', False):
             EXECUTABLE_PATH = sys.executable
             BASE_DIR = os.path.dirname(EXECUTABLE_PATH)
         else:
-            # __file__ is not defined in interactive interpreter, so we fallback to sys.argv[0]
             script_path = __file__ if "__file__" in locals() else sys.argv[0]
             EXECUTABLE_PATH = os.path.abspath(script_path)
             BASE_DIR = os.path.dirname(EXECUTABLE_PATH)
 except Exception:
-    # 最终回退方案
     BASE_DIR = os.getcwd()
     EXECUTABLE_PATH = sys.executable
 
-# --- 更改工作目录 ---
-# 这对于单文件模式下查找外部配置文件/语言文件至关重要。
 try:
     os.chdir(BASE_DIR)
 except Exception as e:
@@ -69,28 +59,54 @@ from core.profile_manager import ProfileManager
 from core.settings_manager import SettingsManager
 from gui.main_window import MainWindow
 
-# --- 全局变量 ---
-# 该变量在 main 函数作用域内管理，并直接传递给清理函数。
 _app_services_for_cleanup: Optional[AppServices] = None
 
-# --- 全局异常处理 ---
+# --- 崩溃安全机制 ---
+def _trigger_emergency_fan_setter():
+    """
+    【最终优化】通过启动一个独立的、隔离的进程来设置紧急风扇速度。
+    这可以完全避免在主应用崩溃时发生COM重入死锁。
+    """
+    print("CRASH HANDLER: 检测到自动模式，正在尝试启动紧急风扇设置进程...")
+    try:
+        # 确定紧急脚本的路径
+        emergency_script_path = os.path.join(BASE_DIR, 'emergency_fan_setter.py')
+        if not os.path.exists(emergency_script_path):
+            print(f"CRASH HANDLER: 紧急脚本 '{emergency_script_path}' 未找到。", file=sys.stderr)
+            return
+
+        # 使用 sys.executable (通常是 pythonw.exe) 来无窗口运行脚本
+        # Popen 是非阻塞的，它会立即返回，允许主程序继续其崩溃流程
+        subprocess.Popen([sys.executable, emergency_script_path], creationflags=subprocess.CREATE_NO_WINDOW)
+        print("CRASH HANDLER: 紧急风扇设置进程已成功启动。")
+
+    except Exception as e:
+        print(f"CRASH HANDLER: 启动紧急风扇设置进程失败: {e}", file=sys.stderr)
+
 def handle_exception(exc_type, exc_value, exc_traceback):
-    """全局异常处理器，用于记录错误并显示消息框。"""
+    """全局异常处理器，增加了崩溃安全机制。"""
+    try:
+        last_mode_file = os.path.join(BASE_DIR, 'last_mode.state')
+        if os.path.exists(last_mode_file):
+            with open(last_mode_file, 'r') as f:
+                last_mode = f.read().strip()
+            if last_mode == 'auto':
+                _trigger_emergency_fan_setter()
+    except Exception as safety_e:
+        print(f"CRASH HANDLER: 在执行安全机制时发生错误: {safety_e}", file=sys.stderr)
+
     error_msg_detail = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
     print(f"未处理的异常:\n{error_msg_detail}", file=sys.stderr)
 
     try:
         title = tr("unhandled_exception_title") if '_translations_loaded' in globals() and _translations_loaded else "Unhandled Exception"
         msg = f"发生意外的关键错误:\n\n{exc_value}\n\nPlease report this issue."
-
-        # 确保QApplication实例存在
         app = QApplication.instance() or QApplication([])
         QMessageBox.critical(None, title, msg)
     except Exception as e:
         print(f"显示异常消息框时出错: {e}", file=sys.stderr)
         if os.name == 'nt':
             try:
-                # 如果Qt消息框失败，回退到Windows原生消息框
                 ctypes.windll.user32.MessageBoxW(0, f"未处理的异常:\n{exc_value}", "关键错误", 0x10)
             except Exception: pass
 
@@ -109,7 +125,6 @@ def perform_cleanup():
     _cleanup_called = True
     print("正在执行清理...")
 
-    # 1. 关闭 AppServices (处理所有后端清理)
     if _app_services_for_cleanup:
         print("正在关闭 AppServices...")
         try:
@@ -121,7 +136,6 @@ def perform_cleanup():
     else:
         print("未找到 AppServices 实例进行关闭。")
 
-    # 2. 释放互斥锁和共享内存
     print("正在释放互斥锁和共享内存...")
     release_mutex()
     print("互斥锁和共享内存已释放。")
@@ -133,65 +147,45 @@ def main():
     """主应用函数。"""
     global _app_services_for_cleanup
 
-    # 注册全局异常处理器和退出清理函数
     sys.excepthook = handle_exception
     atexit.register(perform_cleanup)
 
-    # --- 初始化核心服务 ---
-    # 1. 创建路径管理器，这是所有路径的唯一来源
     path_manager = PathManager(base_dir=BASE_DIR)
-
-    # 2. 加载翻译文件
     load_translations(path_manager.languages)
 
-    # 3. Windows平台特定检查
     if os.name == 'nt':
-        # 1. 检查管理员权限
         if not is_admin():
             run_as_admin(EXECUTABLE_PATH, BASE_DIR)
             sys.exit(1)
         
-        # 2. 检查是否已有实例在运行
-        # 传递 is_task_launch 参数，以决定发送哪个命令
         is_task_launch = STARTUP_ARG_MINIMIZED in sys.argv
         if not check_single_instance(is_task_launch=is_task_launch):
             print("另一个实例正在运行。已发送命令，本实例将退出。")
             sys.exit(0)
 
-    # 初始化Qt应用
     QCoreApplication.setOrganizationName(APP_ORGANIZATION_NAME)
     QCoreApplication.setApplicationName(APP_INTERNAL_NAME)
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     app.aboutToQuit.connect(perform_cleanup)
 
-    # --- 初始化各层 ---
     try:
-        # 调整了初始化顺序以解决启动时控制无效的问题
-        # 1. 创建状态和管理器实例
         app_state = AppState(path_manager=path_manager)
         profile_manager = ProfileManager(app_state=app_state)
         settings_manager = SettingsManager(app_state=app_state, profile_manager=profile_manager)
         
-        # 2. 创建 AppServices，它会立即开始监听 AppState 的变化
         app_services = AppServices(state=app_state)
         _app_services_for_cleanup = app_services
 
-        # 3. **关键修复**：在加载任何配置文件之前，必须先初始化WMI接口。
-        #    这确保了当 load_config() 触发信号时，AppServices 能够成功执行硬件命令。
         if not app_services.initialize_wmi():
             error_title = tr("wmi_init_error_title")
             error_text = app_state.get_controller_status_message()
             QMessageBox.critical(None, error_title, error_text)
             sys.exit(1)
 
-        # 4. 现在可以安全地加载配置了。
-        #    这将设置初始配置文件名，触发 active_profile_changed 信号，
-        #    AppServices 会捕获此信号并正确应用所有初始硬件设置。
         profile_manager.load_config()
         set_language(app_state.get_language())
         
-        # 5. 创建主窗口
         start_minimized = STARTUP_ARG_MINIMIZED in sys.argv
         main_window = MainWindow(
             app_services=app_services, 
@@ -201,7 +195,6 @@ def main():
             start_minimized=start_minimized
         )
 
-        # 6. 将主窗口句柄写入共享内存
         if os.name == 'nt':
             main_window.window_initialized_signal.connect(write_hwnd_to_shared_memory)
 
@@ -209,7 +202,6 @@ def main():
         handle_exception(type(init_error), init_error, init_error.__traceback__)
         sys.exit(1)
 
-    # --- 启动Qt事件循环 ---
     print(f"启动 {APP_NAME} 事件循环...")
     exit_code = app.exec()
     print(f"应用事件循环结束，退出代码: {exit_code}")

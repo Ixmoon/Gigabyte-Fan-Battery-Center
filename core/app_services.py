@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 提供一个中心化的服务层(AppServices)，将后端逻辑与UI解耦。
-此类现在是所有硬件控制业务逻辑的唯一中心，直接调用扁平化的WMI接口。
+【最终优化】增加了优雅退出逻辑，在程序关闭时将风扇交还BIOS控制，并为崩溃安全机制记录当前风扇模式。
 """
 
 import os
@@ -43,6 +43,9 @@ class AppServices(QObject):
 
         self.state.set_controller_status_message(tr("initializing"))
         self._is_ui_visible: bool = False
+        
+        # 【新增】为崩溃安全机制定义状态文件路径
+        self._last_mode_file_path = os.path.join(self.state.paths.base_dir, 'last_mode.state')
         
         self._connect_to_state_signals()
 
@@ -94,9 +97,6 @@ class AppServices(QObject):
             controller_interval = self._current_profile.get_value('controller_update_interval_ms')
             if self.controller_timer.interval() != controller_interval:
                 self.controller_timer.setInterval(controller_interval)
-            
-            gui_interval = self._current_profile.get_value('gui_update_interval_ms')
-            self.wmi_interface.set_polling_interval(gui_interval)
 
     def initialize_wmi(self) -> bool:
         if not self.wmi_interface.start():
@@ -108,13 +108,23 @@ class AppServices(QObject):
         return True
 
     def shutdown(self):
+        """【优化】执行优雅关机程序。"""
         if self._is_shutting_down: return
         self._is_shutting_down = True
         self.controller_timer.stop()
+        
+        # 【新增】如果软件正在控制风扇，则在退出前将其交还给BIOS
+        if self.state.get_applied_fan_mode() != FAN_MODE_BIOS:
+            print("优雅退出：将风扇控制权交还给BIOS...")
+            try:
+                self._configure_bios_fan_control()
+                print("优雅退出：风扇已设置为BIOS模式。")
+            except WMIError as e:
+                print(f"优雅退出：设置BIOS风扇模式失败: {e}", file=sys.stderr)
+        
         if self.wmi_interface:
             self.wmi_interface.stop()
 
-    # --- 私有辅助方法，封装WMI调用序列 ---
     def _configure_software_fan_control(self):
         """执行启用软件风扇控制所需的WMI命令序列。"""
         self.wmi_interface.execute_method(SET_CUSTOM_FAN_STATUS, Data=1.0)
@@ -137,7 +147,14 @@ class AppServices(QObject):
         self.state.set_applied_fan_speed_percent(percent_clamped)
         return True
         
-    # --- 公共业务逻辑方法 (Slot) ---
+    def _write_last_mode_state(self, mode: str):
+        """【新增】将当前风扇模式写入状态文件，用于崩溃恢复。"""
+        try:
+            with open(self._last_mode_file_path, 'w') as f:
+                f.write(mode)
+        except IOError as e:
+            print(f"警告：无法写入 'last_mode.state' 文件: {e}", file=sys.stderr)
+
     @Slot(str)
     def set_fan_mode(self, mode: str):
         """设置风扇控制模式。这是核心业务逻辑之一。"""
@@ -149,22 +166,27 @@ class AppServices(QObject):
                 self._configure_software_fan_control()
                 self.auto_temp_controller.reset_state()
                 self.state.set_applied_fan_speed_percent(INIT_APPLIED_PERCENTAGE)
-            elif mode == FAN_MODE_CUSTOM:
+            else: 
                 if self.controller_timer.isActive(): self.controller_timer.stop()
-                self._configure_software_fan_control()
-                self._apply_fan_speed_percent(self._current_profile.get_custom_fan_speed())
-            elif mode == FAN_MODE_BIOS:
-                if self.controller_timer.isActive(): self.controller_timer.stop()
-                self._configure_bios_fan_control()
-                self.state.set_applied_fan_speed_percent(INIT_APPLIED_PERCENTAGE)
+                if mode == FAN_MODE_CUSTOM:
+                    self._configure_software_fan_control()
+                    self._apply_fan_speed_percent(self._current_profile.get_custom_fan_speed())
+                elif mode == FAN_MODE_BIOS:
+                    self._configure_bios_fan_control()
+                    self.state.set_applied_fan_speed_percent(INIT_APPLIED_PERCENTAGE)
             
             self.state.set_applied_fan_mode(mode)
             self.state.set_is_fan_control_panel_enabled((mode != FAN_MODE_BIOS))
+            
+            # 【新增】成功应用模式后，记录状态
+            self._write_last_mode_state(mode)
         
         except WMIError as e:
             print(f"WMI操作在 'set_fan_mode' 中失败: {e}", file=sys.stderr)
             self.state.set_controller_status_message(tr("wmi_error"))
             self.state.set_applied_fan_mode(FAN_MODE_BIOS)
+            # 如果设置失败，也记录为BIOS模式
+            self._write_last_mode_state(FAN_MODE_BIOS)
 
     @Slot(int)
     def set_custom_fan_speed(self, speed: int):
@@ -212,7 +234,7 @@ class AppServices(QObject):
 
     @Slot()
     def _perform_control_cycle(self):
-        """自动温控的核心循环，由controller_timer触发。"""
+        """自动温控的核心循环。"""
         if self._is_shutting_down or not self.wmi_interface.is_running: return
         if self.state.get_applied_fan_mode() != FAN_MODE_AUTO: return
 
@@ -221,8 +243,9 @@ class AppServices(QObject):
             cpu_temp = temps.get('cpu_temp', TEMP_READ_ERROR_VALUE)
             gpu_temp = temps.get('gpu_temp', TEMP_READ_ERROR_VALUE)
             
-            self.state.set_cpu_temp(cpu_temp)
-            self.state.set_gpu_temp(gpu_temp)
+            if self._is_ui_visible:
+                self.state.set_cpu_temp(cpu_temp)
+                self.state.set_gpu_temp(gpu_temp)
 
             if cpu_temp != TEMP_READ_ERROR_VALUE or gpu_temp != TEMP_READ_ERROR_VALUE:
                 speed_to_apply = self.auto_temp_controller.perform_adjustment_step(
@@ -233,11 +256,13 @@ class AppServices(QObject):
                 if speed_to_apply is not None:
                     self._apply_fan_speed_percent(speed_to_apply)
             
-            self.state.set_auto_fan_target_speed_percent(self.auto_temp_controller.get_last_theoretical_target())
+            if self._is_ui_visible:
+                self.state.set_auto_fan_target_speed_percent(self.auto_temp_controller.get_last_theoretical_target())
         except WMIError as e:
             print(f"WMI操作在 '_perform_control_cycle' 中失败: {e}", file=sys.stderr)
-            self.state.set_cpu_temp(TEMP_READ_ERROR_VALUE)
-            self.state.set_gpu_temp(TEMP_READ_ERROR_VALUE)
+            if self._is_ui_visible:
+                self.state.set_cpu_temp(TEMP_READ_ERROR_VALUE)
+                self.state.set_gpu_temp(TEMP_READ_ERROR_VALUE)
 
     @Slot()
     def on_gui_tick(self):
@@ -245,6 +270,7 @@ class AppServices(QObject):
         if self._is_shutting_down or not self.wmi_interface.is_running or not self._is_ui_visible:
             return
         
+        self.wmi_interface.request_core_sensor_poll()
         sensor_data = self.wmi_interface.get_latest_core_sensor_data()
         self._update_state_from_sensor_data(sensor_data)
 
@@ -259,15 +285,10 @@ class AppServices(QObject):
             self.state.set_controller_status_message(tr("wmi_error"))
 
     def _update_state_from_sensor_data(self, sensor_data: dict):
-        """
-        使用反射机制，并正确处理特殊映射。
-        """
+        """使用反射机制，并正确处理特殊映射，用从WMI获取的数据更新AppState。"""
         if not sensor_data: return
         
-        # 特殊映射：将硬件命名映射到业务状态命名
         key_map = {
-            'fan1_rpm': 'fan1_rpm', # 现在是1:1
-            'fan2_rpm': 'fan2_rpm', # 现在是1:1
             'charge_policy': 'applied_charge_policy',
             'charge_threshold': 'applied_charge_threshold'
         }
@@ -277,14 +298,12 @@ class AppServices(QObject):
             setter_name = f"set_{state_key}"
             
             if hasattr(self.state, setter_name):
-                # 特殊值转换
                 if state_key == 'applied_charge_policy':
                     value = BATTERY_CODE_POLICIES.get(value, "err")
-                
-                # 调用setter
                 getattr(self.state, setter_name)(value)
 
     def set_ui_visibility(self, is_visible: bool):
+        """当UI可见性变化时调用。"""
         self._is_ui_visible = is_visible
         if is_visible:
             self.perform_full_status_update()

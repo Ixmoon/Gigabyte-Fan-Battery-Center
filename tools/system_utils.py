@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 OS级别的工具函数，主要用于Windows特定的操作。
+【最终优化】修复了脚本模式下提权可能失败的问题。
 """
 
 import sys
@@ -38,7 +39,7 @@ def run_as_admin(executable_path: str, base_dir: str):
     error_msg_base = tr("elevation_error_msg")
 
     try:
-        # 最终修复：使用可执行文件名来区分打包模式和脚本模式，不再依赖不可靠的 sys.frozen
+        # 【修复】使用可执行文件名来区分打包模式和脚本模式，不再依赖不可靠的 sys.frozen
         is_frozen = os.path.basename(executable_path).lower() not in ('python.exe', 'pythonw.exe')
 
         if is_frozen:
@@ -48,7 +49,8 @@ def run_as_admin(executable_path: str, base_dir: str):
         else:
             # --- 脚本模式 (正确的逻辑) ---
             executable = executable_path  # 这是 python.exe 的路径
-            script_path = get_application_script_path_for_task() # 这是 main.py 的路径
+            # __file__ 可能在某些上下文中不可用，使用 sys.argv[0] 作为回退
+            script_path = os.path.abspath(__file__ if "__file__" in locals() else sys.argv[0])
             params = f'"{script_path}" {subprocess.list2cmdline(sys.argv[1:])}'
 
         # 使用正确的 executable 和 base_dir (作为工作目录) 来执行

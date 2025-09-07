@@ -1,11 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 提供一个极其轻薄、扁平化的WMI交互接口。
-该模块负责：
-1. 管理一个后台工作线程，该线程根据外部指令处理所有WMI调用。
-2. 提供一个通用的、阻塞式的 `execute_method` 来执行所有WMI写入操作。
-3. 提供三个高度优化的只读方法，分别用于UI更新、自动温控和全局刷新。
-4. 管理一个独立的QTimer，用于动态地、高效地触发后台核心传感器轮询。
+该模块是一个纯粹的、被动的服务提供者。
 """
 
 import threading
@@ -186,9 +182,7 @@ class WMIInterface(QObject):
         self._worker_thread: Optional[WMIWorker] = None
         self._is_running = False
         self._initialization_error: Optional[Exception] = None
-        # 使用QTimer进行动态轮询
-        self._polling_timer = QTimer(self)
-        self._polling_timer.timeout.connect(self._request_core_sensor_poll)
+        # 【移除】不再需要内部定时器
 
     @property
     def is_running(self) -> bool:
@@ -211,13 +205,11 @@ class WMIInterface(QObject):
             return False
         
         self._is_running = True
-        self._polling_timer.start(1000) # 启动时使用默认间隔
         return True
 
     def stop(self):
         if not self.is_running or not self._worker_thread: return
         self._is_running = False
-        self._polling_timer.stop()
         self._request_queue.put((WMIInternalSignal.STOP, {}, None))
         self._worker_thread.join(timeout=WMI_REQUEST_TIMEOUT_S)
         self._worker_thread = None
@@ -260,13 +252,13 @@ class WMIInterface(QObject):
         """阻塞式地仅获取CPU和GPU温度。"""
         return self._execute_sync("_get_temperatures")
 
-    def set_polling_interval(self, interval_ms: int):
-        """动态设置后台轮询间隔。"""
-        if self._polling_timer.interval() != interval_ms:
-            self._polling_timer.setInterval(interval_ms)
-
-    @Slot()
-    def _request_core_sensor_poll(self):
-        """由QTimer触发，向后台线程发送一个非阻塞的轮询请求。"""
+    def request_core_sensor_poll(self):
+        """
+        【新增】由AppServices调用的非阻塞方法，用于请求一次后台核心传感器轮询。
+        """
         if self.is_running:
-            self._request_queue.put((WMIInternalSignal.POLL_CORE_SENSORS, {}, None))
+            try:
+                self._request_queue.put_nowait((WMIInternalSignal.POLL_CORE_SENSORS, {}, None))
+            except queue.Full:
+                # 队列满是正常情况，意味着后台繁忙，忽略本次请求即可
+                pass

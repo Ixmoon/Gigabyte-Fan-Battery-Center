@@ -45,6 +45,8 @@ DEFAULT_ENGLISH_TRANSLATIONS: Dict[str, str] = {
 
     # 工具提示
     "curve_point_tooltip": "Temp: {temp}°C, Speed: {speed}%",
+    # 【修复】添加缺失的翻译键并提供有用的提示
+    "canvas_tooltip": "Double-click empty space to add a point.\nRight-click a point to delete it.",
     "add_point_info": "Double-click empty space to add point.",
     "delete_point_info": "Right-click point to delete.",
     "profile_button_tooltip": "Left-Click: Activate\nRight-Click: Save\nDouble-Click: Manage",
@@ -135,6 +137,8 @@ DEFAULT_CHINESE_TRANSLATIONS: Dict[str, str] = {
 
     # 工具提示
     "curve_point_tooltip": "温度: {temp}°C, 速度: {speed}%",
+    # 【修复】添加缺失的翻译键并提供有用的提示
+    "canvas_tooltip": "双击空白区域以添加点。\n右键单击一个点以删除它。",
     "add_point_info": "双击空白区域以添加点。",
     "delete_point_info": "右键单击点以删除。",
     "profile_button_tooltip": "左键: 激活\n右键: 保存\n双击: 管理",

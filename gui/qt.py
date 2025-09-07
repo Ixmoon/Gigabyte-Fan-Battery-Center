@@ -15,7 +15,7 @@ from PySide6.QtCore import (
     Qt,
     QLocale,
     QEvent,
-    QByteArray, # 重新添加 QByteArray 的导入
+    QByteArray,
     Signal,
     Slot,
     QSize,
@@ -26,7 +26,8 @@ from PySide6.QtCore import (
     QThreadPool,
     Property,
     QBuffer,
-    QIODevice
+    QIODevice,
+    QRect
 )
 from PySide6.QtGui import (
     QIcon,
@@ -44,7 +45,9 @@ from PySide6.QtGui import (
     QResizeEvent,
     QPixmap,
     QCursor,
-    QIntValidator
+    QIntValidator,
+    QPaintEvent, # 【新增】为paintEvent类型提示提供支持
+    QRegion
 )
 from PySide6.QtWidgets import (
     QApplication,
