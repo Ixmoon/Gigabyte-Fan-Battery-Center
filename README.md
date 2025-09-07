@@ -1,4 +1,4 @@
-# Gigabyte/Aorus Fan Battery control center
+# Gigabyte/Aorus Fan Battery Control Center
 
 ### Highlights & Features
 - **Lightweight & Efficient:** A minimal footprint application with extremely low CPU usage. When minimized and not in Auto-Fan mode, it consumes **zero CPU**, ensuring no impact on performance or battery life.
