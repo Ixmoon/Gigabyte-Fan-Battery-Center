@@ -1,5 +1,29 @@
 # Gigabyte/Aorus Fan Battery Control Center
 
+> [!IMPORTANT]
+> **Project Has Moved!**
+> 
+> This project is no longer actively maintained. It has been succeeded by a new, completely rewritten version with superior performance, enhanced features, and ongoing support.
+> 
+> **All users are strongly encouraged to migrate to the new project:**
+> 
+> ### **[Gigabyte-Fan-Battery-Center](https://github.com/Ixmoon/Gigabyte-Fan-Battery-Center)**
+> 
+> Thank you for your support!
+
+---
+
+> [!IMPORTANT]
+> **项目已迁移！**
+> 
+> 本项目已不再进行积极维护。一个全新的、完全重写的版本已经取代了它，拥有更卓越的性能、更丰富的功能和持续的支持。
+> 
+> **强烈建议所有用户迁移到新项目：**
+> 
+> ### **[技嘉风扇与电池控制中心 (Gigabyte-Fan-Battery-Center)](https://github.com/Ixmoon/Gigabyte-Fan-Battery-Center)**
+> 
+> 感谢您的支持！
+
 ### Highlights & Features
 - **Lightweight & Efficient:** A minimal footprint application with extremely low CPU usage. When minimized and not in Auto-Fan mode, it consumes **zero CPU**, ensuring no impact on performance or battery life.
 - **Advanced Fan Control:** Go beyond stock settings. Create multiple profiles with custom, smooth fan curves for both CPU and GPU, or set a fixed fan speed for specific tasks.
