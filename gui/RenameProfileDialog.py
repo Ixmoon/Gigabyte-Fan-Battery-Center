@@ -10,7 +10,7 @@ class RenameProfileDialog(QDialog):
     """用于重命名和删除配置文件的自定义对话框。"""
     def __init__(self, old_name: str, parent: Optional[QWidget] = None):
         super().__init__(parent)
-        # 【修复】使用tr()函数
+        # 使用tr()函数
         self.setWindowTitle(tr("rename_profile_title"))
         
         self.result_action: str = "cancel"
@@ -18,7 +18,7 @@ class RenameProfileDialog(QDialog):
         
         layout = QVBoxLayout(self)
         
-        # 【修复】使用tr()函数
+        # 使用tr()函数
         self.label = QLabel(tr("rename_profile_label", old_name=old_name), self)
         layout.addWidget(self.label)
         
@@ -26,7 +26,7 @@ class RenameProfileDialog(QDialog):
         layout.addWidget(self.line_edit)
         
         self.button_box = QDialogButtonBox(self)
-        # 【修复】使用tr()函数
+        # 使用tr()函数
         self.rename_button = self.button_box.addButton(tr("rename_button"), QDialogButtonBox.ButtonRole.AcceptRole)
         self.delete_button = self.button_box.addButton(tr("delete_button"), QDialogButtonBox.ButtonRole.DestructiveRole)
         self.button_box.addButton(QDialogButtonBox.StandardButton.Cancel)
@@ -41,7 +41,7 @@ class RenameProfileDialog(QDialog):
         return self.line_edit.text().strip()
 
     def _on_delete_clicked(self):
-        # 【修复】使用tr()函数
+        # 使用tr()函数
         reply = QMessageBox.warning(
             self,
             tr("delete_profile_title"),

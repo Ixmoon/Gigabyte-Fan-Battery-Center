@@ -1,6 +1,6 @@
 QMainWindow {
     background-color: #2E3135;
-    /* 【修复】移除边框，因为原生边框已被 nativeEvent 禁用 */
+    /* 移除边框，因为原生边框已被 nativeEvent 禁用 */
     border: none;
 }
 
@@ -43,7 +43,7 @@ QPushButton#windowControlButton, QPushButton#windowControlButton_close {
     border: none;
     font-size: 14pt;
     font-family: "Segoe UI Symbol";
-    /* 【修复】移除可能干扰图标的padding */
+    /* 移除可能干扰图标的padding */
     padding: 0px;
 }
 

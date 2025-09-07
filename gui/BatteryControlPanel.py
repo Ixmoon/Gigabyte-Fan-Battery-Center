@@ -24,6 +24,6 @@ class BatteryControlPanel(BaseControlPanel):
             "profile_value_attr": "battery_charge_threshold",
             "mode_tooltip_key": "charge_policy_tooltip",
             "slider_tooltip_key": "charge_threshold_tooltip",
-            "is_fan_control": False, # 【新增】标记这不是风扇控制面板
+            "is_fan_control": False, # 标记这不是风扇控制面板
         }
         super().__init__(config, state, profile_manager, parent)

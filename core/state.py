@@ -101,14 +101,14 @@ class AppState(QObject):
     
     cpu_temp_changed = Signal(float)
     gpu_temp_changed = Signal(float)
-    cpu_fan_rpm_changed = Signal(int)
-    gpu_fan_rpm_changed = Signal(int)
+    # 重命名以匹配硬件实现，消除业务逻辑层的转化
+    fan1_rpm_changed = Signal(int)
+    fan2_rpm_changed = Signal(int)
     applied_fan_mode_changed = Signal(str)
     applied_fan_speed_percent_changed = Signal(int)
     auto_fan_target_speed_percent_changed = Signal(int)
     applied_charge_policy_changed = Signal(str)
     applied_charge_threshold_changed = Signal(int)
-    # 【修复】重命名，使其职责更清晰
     is_fan_control_panel_enabled_changed = Signal(bool)
     active_curve_type_changed = Signal(str)
     controller_status_message_changed = Signal(str)
@@ -120,20 +120,20 @@ class AppState(QObject):
         self._start_on_boot: bool = False
         self._active_profile_name: Optional[str] = None
         self._profiles: Dict[str, ProfileState] = {}
-        # 【新增】用于维护配置文件顺序的列表
         self.profile_order: List[str] = []
         self.window_geometry: Optional[str] = None
 
+        # 瞬时状态
         self._cpu_temp: float = 0.0
         self._gpu_temp: float = 0.0
-        self._cpu_fan_rpm: int = 0
-        self._gpu_fan_rpm: int = 0
+        # 重命名
+        self._fan1_rpm: int = 0
+        self._fan2_rpm: int = 0
         self._applied_fan_mode: str = "auto"
         self._applied_fan_speed_percent: int = 0
         self._auto_fan_target_speed_percent: int = 0
         self._applied_charge_policy: str = "bios"
         self._applied_charge_threshold: int = 100
-        # 【修复】重命名
         self._is_fan_control_panel_enabled: bool = True
         self._active_curve_type: str = "cpu"
         self._controller_status_message: str = ""
@@ -143,6 +143,7 @@ class AppState(QObject):
             setattr(self, field_name, value)
             signal.emit(value)
 
+    # --- 持久化状态属性 ---
     def get_language(self) -> str: return self._language
     def set_language(self, value: str): self._set_value('_language', value, self.language_changed)
     language = Property(str, get_language, set_language, notify=language_changed) # type: ignore
@@ -164,10 +165,10 @@ class AppState(QObject):
             self.profiles_list_changed.emit(self.get_profile_names(), self._active_profile_name or "")
     active_profile_name = Property(str, get_active_profile_name, set_active_profile_name, notify=active_profile_changed) # type: ignore
 
-    # 【修复】现在返回有序列表
     def get_profile_names(self) -> List[str]: return self.profile_order
     profile_names = Property(list, get_profile_names, notify=profiles_list_changed) # type: ignore
         
+    # --- 瞬时状态属性 ---
     def get_cpu_temp(self) -> float: return self._cpu_temp
     def set_cpu_temp(self, value: float): self._set_value('_cpu_temp', value, self.cpu_temp_changed)
     cpu_temp = Property(float, get_cpu_temp, set_cpu_temp, notify=cpu_temp_changed) # type: ignore
@@ -176,13 +177,14 @@ class AppState(QObject):
     def set_gpu_temp(self, value: float): self._set_value('_gpu_temp', value, self.gpu_temp_changed)
     gpu_temp = Property(float, get_gpu_temp, set_gpu_temp, notify=gpu_temp_changed) # type: ignore
 
-    def get_cpu_fan_rpm(self) -> int: return self._cpu_fan_rpm
-    def set_cpu_fan_rpm(self, value: int): self._set_value('_cpu_fan_rpm', value, self.cpu_fan_rpm_changed)
-    cpu_fan_rpm = Property(int, get_cpu_fan_rpm, set_cpu_fan_rpm, notify=cpu_fan_rpm_changed) # type: ignore
+    # 重命名
+    def get_fan1_rpm(self) -> int: return self._fan1_rpm
+    def set_fan1_rpm(self, value: int): self._set_value('_fan1_rpm', value, self.fan1_rpm_changed)
+    fan1_rpm = Property(int, get_fan1_rpm, set_fan1_rpm, notify=fan1_rpm_changed) # type: ignore
 
-    def get_gpu_fan_rpm(self) -> int: return self._gpu_fan_rpm
-    def set_gpu_fan_rpm(self, value: int): self._set_value('_gpu_fan_rpm', value, self.gpu_fan_rpm_changed)
-    gpu_fan_rpm = Property(int, get_gpu_fan_rpm, set_gpu_fan_rpm, notify=gpu_fan_rpm_changed) # type: ignore
+    def get_fan2_rpm(self) -> int: return self._fan2_rpm
+    def set_fan2_rpm(self, value: int): self._set_value('_fan2_rpm', value, self.fan2_rpm_changed)
+    fan2_rpm = Property(int, get_fan2_rpm, set_fan2_rpm, notify=fan2_rpm_changed) # type: ignore
     
     def get_applied_fan_mode(self) -> str: return self._applied_fan_mode
     def set_applied_fan_mode(self, value: str): self._set_value('_applied_fan_mode', value, self.applied_fan_mode_changed)
@@ -204,7 +206,6 @@ class AppState(QObject):
     def set_applied_charge_threshold(self, value: int): self._set_value('_applied_charge_threshold', value, self.applied_charge_threshold_changed)
     applied_charge_threshold = Property(int, get_applied_charge_threshold, set_applied_charge_threshold, notify=applied_charge_threshold_changed) # type: ignore
 
-    # 【修复】重命名
     def get_is_fan_control_panel_enabled(self) -> bool: return self._is_fan_control_panel_enabled
     def set_is_fan_control_panel_enabled(self, value: bool): self._set_value('_is_fan_control_panel_enabled', value, self.is_fan_control_panel_enabled_changed)
     is_fan_control_panel_enabled = Property(bool, get_is_fan_control_panel_enabled, set_is_fan_control_panel_enabled, notify=is_fan_control_panel_enabled_changed) # type: ignore
@@ -217,32 +218,31 @@ class AppState(QObject):
     def set_controller_status_message(self, value: str): self._set_value('_controller_status_message', value, self.controller_status_message_changed)
     controller_status_message = Property(str, get_controller_status_message, set_controller_status_message, notify=controller_status_message_changed) # type: ignore
     
+    # --- 配置文件管理方法 ---
     def get_profile(self, name: str) -> Optional[ProfileState]:
         return self._profiles.get(name)
         
     def add_profile(self, name: str, profile: ProfileState):
         if name not in self._profiles:
             self._profiles[name] = profile
-            self.profile_order.append(name) # 【新增】
+            self.profile_order.append(name)
             self.profiles_list_changed.emit(self.get_profile_names(), self.active_profile_name or "")
             
     def rename_profile(self, old_name: str, new_name: str):
         if old_name in self._profiles and new_name not in self._profiles:
             profile = self._profiles.pop(old_name)
             self._profiles[new_name] = profile
-            # 【新增】更新顺序列表
             try:
                 idx = self.profile_order.index(old_name)
                 self.profile_order[idx] = new_name
             except ValueError:
-                self.profile_order.append(new_name) # 作为后备
+                self.profile_order.append(new_name)
             
             if self.active_profile_name == old_name:
                 self.set_active_profile_name(new_name)
             else:
                 self.profiles_list_changed.emit(self.get_profile_names(), self.active_profile_name or "")
 
-    # 【新增】删除配置文件的逻辑
     def delete_profile(self, name: str):
         if name in self._profiles and len(self._profiles) > 1:
             del self._profiles[name]
@@ -250,20 +250,18 @@ class AppState(QObject):
                 self.profile_order.remove(name)
             
             if self.active_profile_name == name:
-                # 如果删除的是活动配置文件，则激活列表中的第一个
                 new_active_name = self.profile_order[0] if self.profile_order else None
                 if new_active_name:
                     self.set_active_profile_name(new_active_name)
             else:
                 self.profiles_list_changed.emit(self.get_profile_names(), self.active_profile_name or "")
 
-
     def get_profiles_for_config(self) -> Dict[str, Any]:
         return {name: profile.to_dict() for name, profile in self._profiles.items()}
         
     def load_profiles_from_config(self, profiles_data: Dict[str, Any], profile_order: List[str]):
         self._profiles.clear()
-        self.profile_order = profile_order # 【新增】
+        self.profile_order = profile_order
         for name, profile_dict in profiles_data.items():
             profile = ProfileState(self)
             profile.from_dict(profile_dict)

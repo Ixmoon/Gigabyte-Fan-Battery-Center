@@ -24,6 +24,6 @@ class FanControlPanel(BaseControlPanel):
             "profile_value_attr": "custom_fan_speed",
             "mode_tooltip_key": "fan_mode_tooltip",
             "slider_tooltip_key": "custom_fan_speed_tooltip",
-            "is_fan_control": True, # 【新增】标记这是一个风扇控制面板
+            "is_fan_control": True, # 标记这是一个风扇控制面板
         }
         super().__init__(config, state, profile_manager, parent)

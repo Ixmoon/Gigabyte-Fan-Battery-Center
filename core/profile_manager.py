@@ -33,7 +33,7 @@ class ProfileManager(QObject):
         if not profiles_data:
             profiles_data = {"Config 1": copy.deepcopy(DEFAULT_PROFILE_SETTINGS)}
         
-        # 【修复】加载或生成配置文件顺序
+        # 加载或生成配置文件顺序
         profile_order = config_data.get("profile_order", sorted(profiles_data.keys()))
         # 确保顺序列表和配置文件字典同步
         profile_order = [name for name in profile_order if name in profiles_data]
@@ -55,7 +55,7 @@ class ProfileManager(QObject):
             "start_on_boot": self.state.get_start_on_boot(),
             "active_profile_name": self.state.get_active_profile_name(),
             "window_geometry": self.state.window_geometry,
-            "profile_order": self.state.profile_order, # 【新增】保存顺序
+            "profile_order": self.state.profile_order, # 保存顺序
             "profiles": self.state.get_profiles_for_config()
         }
         try:
@@ -100,7 +100,7 @@ class ProfileManager(QObject):
         self.state.rename_profile(old_name, new_name)
         self.save_config()
             
-    # 【新增】删除配置文件的接口
+    # 删除配置文件的接口
     def delete_profile(self, name: str):
         self.state.delete_profile(name)
         self.save_config()

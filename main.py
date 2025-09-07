@@ -167,7 +167,7 @@ def main():
 
     # --- 初始化各层 ---
     try:
-        # 【修复】调整了初始化顺序以解决启动时控制无效的问题
+        # 调整了初始化顺序以解决启动时控制无效的问题
         # 1. 创建状态和管理器实例
         app_state = AppState(path_manager=path_manager)
         profile_manager = ProfileManager(app_state=app_state)

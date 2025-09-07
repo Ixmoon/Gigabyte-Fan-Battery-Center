@@ -104,7 +104,7 @@ DEFAULT_ENGLISH_TRANSLATIONS: Dict[str, str] = {
     "lang_display_name_zh": "中文",
 }
 
-# --- 【新增】默认中文翻译 ---
+# --- 默认中文翻译 ---
 DEFAULT_CHINESE_TRANSLATIONS: Dict[str, str] = {
     # 窗口和UI元素
     "window_title": "风扇 & 电池控制",
@@ -207,7 +207,7 @@ def load_translations(file_path: str):
     global _translations, _translations_loaded, _language_file_path
     _language_file_path = file_path
     
-    # 【修复】默认数据现在包含英文和中文
+    # 默认数据现在包含英文和中文
     default_data = {
         "en": DEFAULT_ENGLISH_TRANSLATIONS.copy(),
         "zh": DEFAULT_CHINESE_TRANSLATIONS.copy()
@@ -227,7 +227,7 @@ def load_translations(file_path: str):
             dir_name = os.path.dirname(file_path)
             if dir_name:
                 os.makedirs(dir_name, exist_ok=True)
-            # 【修复】将包含两种语言的默认数据写入文件
+            # 将包含两种语言的默认数据写入文件
             with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(default_data, f, indent=4, ensure_ascii=False)
             loaded_data = default_data

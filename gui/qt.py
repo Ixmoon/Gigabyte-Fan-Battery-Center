@@ -15,7 +15,7 @@ from PySide6.QtCore import (
     Qt,
     QLocale,
     QEvent,
-    QByteArray, # 【修复】重新添加 QByteArray 的导入
+    QByteArray, # 重新添加 QByteArray 的导入
     Signal,
     Slot,
     QSize,

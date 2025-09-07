@@ -225,14 +225,14 @@ class MainWindow(QMainWindow):
             self._is_initialized = True
             QTimer.singleShot(0, lambda: self.window_initialized_signal.emit(int(self.winId())))
         
-        # 【重构】调用AppServices中的方法来处理UI可见性变化
+        # 调用AppServices中的方法来处理UI可见性变化
         self.app_services.set_ui_visibility(True)
         self._start_gui_timer()
         super().showEvent(event)
 
     def hideEvent(self, event: QHideEvent):
         self.gui_update_timer.stop()
-        # 【重构】调用AppServices中的方法来处理UI可见性变化
+        # 调用AppServices中的方法来处理UI可见性变化
         self.app_services.set_ui_visibility(False)
         super().hideEvent(event)
 

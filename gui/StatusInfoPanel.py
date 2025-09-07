@@ -20,7 +20,6 @@ class StatusInfoPanel(QFrame):
         self._init_ui()
         self._connect_signals()
 
-        # 初始状态设置 - 状态面板应始终启用
         self.setEnabled(True)
         self._update_all_displays()
 
@@ -33,6 +32,7 @@ class StatusInfoPanel(QFrame):
         self.cpu_temp_value = QLabel()
         self.gpu_temp_label = QLabel(tr("gpu_temp_label"))
         self.gpu_temp_value = QLabel()
+        # UI标签保持业务含义，但内部将绑定到fan1/fan2
         self.cpu_fan_rpm_label = QLabel(tr("cpu_fan_rpm_label"))
         self.cpu_fan_rpm_value = QLabel()
         self.gpu_fan_rpm_label = QLabel(tr("gpu_fan_rpm_label"))
@@ -53,15 +53,13 @@ class StatusInfoPanel(QFrame):
 
     def _connect_signals(self):
         """将UI更新槽函数连接到AppState的特定信号。"""
-        # 【修复】移除对 is_fan_control_panel_enabled_changed 的监听，状态面板不应被禁用。
-        
-        # 连接传感器信号
         self.state.cpu_temp_changed.connect(self._update_cpu_temp)
         self.state.gpu_temp_changed.connect(self._update_gpu_temp)
-        self.state.cpu_fan_rpm_changed.connect(self._update_cpu_rpm)
-        self.state.gpu_fan_rpm_changed.connect(self._update_gpu_rpm)
+        
+        # 将UI控件连接到新的、与硬件对齐的状态属性
+        self.state.fan1_rpm_changed.connect(self._update_cpu_rpm) # Fan 1 -> CPU Fan UI
+        self.state.fan2_rpm_changed.connect(self._update_gpu_rpm) # Fan 2 -> GPU Fan UI
 
-        # 连接需要组合逻辑的信号
         self.state.active_profile_changed.connect(self._update_fan_and_battery_display)
         self.state.applied_fan_mode_changed.connect(self._update_fan_and_battery_display)
         self.state.applied_fan_speed_percent_changed.connect(self._update_fan_and_battery_display)
@@ -73,8 +71,9 @@ class StatusInfoPanel(QFrame):
         """一次性更新所有显示的值，用于初始化和语言切换。"""
         self._update_cpu_temp(self.state.get_cpu_temp())
         self._update_gpu_temp(self.state.get_gpu_temp())
-        self._update_cpu_rpm(self.state.get_cpu_fan_rpm())
-        self._update_gpu_rpm(self.state.get_gpu_fan_rpm())
+        # 从新的状态属性获取初始值
+        self._update_cpu_rpm(self.state.get_fan1_rpm())
+        self._update_gpu_rpm(self.state.get_fan2_rpm())
         self._update_fan_and_battery_display()
 
     @Slot(float)

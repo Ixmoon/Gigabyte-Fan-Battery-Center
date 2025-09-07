@@ -63,7 +63,7 @@ class LightweightCurveCanvas(QWidget):
         self.state.active_curve_type_changed.connect(self.set_active_curve)
         self.state.cpu_temp_changed.connect(lambda t: self.update_temp_indicators(cpu_temp=t))
         self.state.gpu_temp_changed.connect(lambda t: self.update_temp_indicators(gpu_temp=t))
-        # 【修复】使用正确的信号名称
+        # 使用正确的信号名称
         self.state.is_fan_control_panel_enabled_changed.connect(self.setEnabled)
 
     @Slot(ProfileState)

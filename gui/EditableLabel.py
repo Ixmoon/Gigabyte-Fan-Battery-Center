@@ -2,7 +2,7 @@
 """
 一个自定义控件，平时显示为QLabel，双击后变为可编辑的QLineEdit。
 """
-# 【改进】使用显式导入代替通配符导入
+# 使用显式导入代替通配符导入
 from .qt import (
     QWidget, Signal, QLabel, QLineEdit, QStackedLayout, QIntValidator,
     Qt, QMouseEvent

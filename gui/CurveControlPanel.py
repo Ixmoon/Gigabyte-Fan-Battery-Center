@@ -158,7 +158,7 @@ class CurveControlPanel(QFrame):
                 new_name = dialog.new_name()
                 if new_name and new_name != old_name:
                     if self.state.get_profile(new_name):
-                        # 【修复】使用tr()函数
+                        # 使用tr()函数
                         QMessageBox.warning(self, tr("add_profile_error_title"), tr("add_profile_duplicate_name_error", name=new_name))
                     else:
                         self.profile_manager.rename_profile(old_name, new_name)
@@ -166,7 +166,7 @@ class CurveControlPanel(QFrame):
                 self.profile_manager.delete_profile(old_name)
 
     def _handle_add_profile_clicked(self):
-        # 【修复】使用tr()函数
+        # 使用tr()函数
         new_name, ok = QInputDialog.getText(self, tr("add_profile_title"), tr("add_profile_label"), QLineEdit.EchoMode.Normal, "")
         if ok and new_name:
             new_name = new_name.strip()
