@@ -182,7 +182,7 @@ class WMIInterface(QObject):
         self._worker_thread: Optional[WMIWorker] = None
         self._is_running = False
         self._initialization_error: Optional[Exception] = None
-        # 【移除】不再需要内部定时器
+        # 不再需要内部定时器
 
     @property
     def is_running(self) -> bool:
@@ -254,7 +254,7 @@ class WMIInterface(QObject):
 
     def request_core_sensor_poll(self):
         """
-        【新增】由AppServices调用的非阻塞方法，用于请求一次后台核心传感器轮询。
+        由AppServices调用的非阻塞方法，用于请求一次后台核心传感器轮询。
         """
         if self.is_running:
             try:

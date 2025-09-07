@@ -3,7 +3,7 @@ import os
 class PathManager:
     """
     一个中心化的路径管理器，用于生成和存储应用程序所需的所有文件和目录路径。
-    【最终优化】此类现在是所有权威路径的唯一来源，由main.py在启动时注入。
+    此类现在是所有权威路径的唯一来源，由main.py在启动时注入。
     """
     def __init__(self, base_dir: str, executable_path: str, main_script_path: str):
         """

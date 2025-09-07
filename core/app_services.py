@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 提供一个中心化的服务层(AppServices)，将后端逻辑与UI解耦。
-【最终优化】增加了优雅退出逻辑，在程序关闭时将风扇交还BIOS控制，并为崩溃安全机制记录当前风扇模式。
+增加了优雅退出逻辑，在程序关闭时将风扇交还BIOS控制，并为崩溃安全机制记录当前风扇模式。
 """
 
 import os
@@ -44,7 +44,7 @@ class AppServices(QObject):
         self.state.set_controller_status_message(tr("initializing"))
         self._is_ui_visible: bool = False
         
-        # 【新增】为崩溃安全机制定义状态文件路径
+        # 为崩溃安全机制定义状态文件路径
         self._last_mode_file_path = os.path.join(self.state.paths.base_dir, 'last_mode.state')
         
         self._connect_to_state_signals()
@@ -108,12 +108,12 @@ class AppServices(QObject):
         return True
 
     def shutdown(self):
-        """【优化】执行优雅关机程序。"""
+        """执行优雅关机程序。"""
         if self._is_shutting_down: return
         self._is_shutting_down = True
         self.controller_timer.stop()
         
-        # 【新增】如果软件正在控制风扇，则在退出前将其交还给BIOS
+        # 如果软件正在控制风扇，则在退出前将其交还给BIOS
         if self.state.get_applied_fan_mode() != FAN_MODE_BIOS:
             print("优雅退出：将风扇控制权交还给BIOS...")
             try:
@@ -148,7 +148,7 @@ class AppServices(QObject):
         return True
         
     def _write_last_mode_state(self, mode: str):
-        """【新增】将当前风扇模式写入状态文件，用于崩溃恢复。"""
+        """将当前风扇模式写入状态文件，用于崩溃恢复。"""
         try:
             with open(self._last_mode_file_path, 'w') as f:
                 f.write(mode)
@@ -178,7 +178,7 @@ class AppServices(QObject):
             self.state.set_applied_fan_mode(mode)
             self.state.set_is_fan_control_panel_enabled((mode != FAN_MODE_BIOS))
             
-            # 【新增】成功应用模式后，记录状态
+            # 成功应用模式后，记录状态
             self._write_last_mode_state(mode)
         
         except WMIError as e:

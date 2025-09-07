@@ -1,12 +1,12 @@
 # -*- coding to: utf-8 -*-
 """
-【新增】紧急风扇速度设置器。
+紧急风扇速度设置器。
 
 这是一个完全独立的脚本，其唯一目的是在主应用程序崩溃时被调用，
 将风扇速度设置为一个安全值（80%）。
 
 它通过进程隔离来避免主应用崩溃时可能出现的COM重入死锁问题。
-【最终修复】简化并统一了WMI调用方式，使其与主程序保持一致，更加健壮和简洁。
+简化并统一了WMI调用方式，使其与主程序保持一致，更加健壮和简洁。
 """
 
 import os
@@ -75,7 +75,7 @@ def set_emergency_fan_speed():
 
         # 1. 取得软件控制权
         log_message("正在取得软件风扇控制权...")
-        # 【最终修复】使用与主程序一致的高级wmi调用方式，简单且可靠
+        # 使用与主程序一致的高级wmi调用方式，简单且可靠
         getattr(wmi_set_obj, SET_CUSTOM_FAN_STATUS)(Data=1.0)
         getattr(wmi_set_obj, SET_SUPER_QUIET)(Data=0.0)
         getattr(wmi_set_obj, SET_AUTO_FAN_STATUS)(Data=0.0)

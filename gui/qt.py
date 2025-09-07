@@ -46,7 +46,7 @@ from PySide6.QtGui import (
     QPixmap,
     QCursor,
     QIntValidator,
-    QPaintEvent, # 【新增】为paintEvent类型提示提供支持
+    QPaintEvent, # 为paintEvent类型提示提供支持
     QRegion
 )
 from PySide6.QtWidgets import (

@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 一个轻量级、基于QPainter的画布，用于显示和编辑风扇曲线。
-【最终优化】此版本实现了智能局部绘制和绘图对象缓存，以彻底解决CPU占用激增问题。
-【体验优化】实现了水平和垂直方向的智能联动调整，当拖拽点时，会自动调整相邻点以提供完全自由、流畅的编辑体验。
+此版本实现了智能局部绘制和绘图对象缓存，以彻底解决CPU占用激增问题。
+实现了水平和垂直方向的智能联动调整，当拖拽点时，会自动调整相邻点以提供完全自由、流畅的编辑体验。
 """
 
 from .qt import *
@@ -47,7 +47,7 @@ class LightweightCurveCanvas(QWidget):
         self._plot_area = QRectF()
         self._margins = {'left': 55, 'top': 20, 'right': 20, 'bottom': 35}
         
-        # 【优化】缓存绘图对象
+        # 缓存绘图对象
         self._background_pixmap: Optional[QPixmap] = None
         self._cached_cpu_curve_poly: Optional[QPolygonF] = None
         self._cached_gpu_curve_poly: Optional[QPolygonF] = None
@@ -98,14 +98,14 @@ class LightweightCurveCanvas(QWidget):
     def _on_cpu_curve_data_changed(self, data: FanTable):
         self.cpu_curve_data = self._validate_and_sort(data)
         self._cpu_interpolator = None
-        self._recache_curves() # 【优化】数据变化时，重新缓存曲线
+        self._recache_curves() # 数据变化时，重新缓存曲线
         self.update()
 
     @Slot(list)
     def _on_gpu_curve_data_changed(self, data: FanTable):
         self.gpu_curve_data = self._validate_and_sort(data)
         self._gpu_interpolator = None
-        self._recache_curves() # 【优化】数据变化时，重新缓存曲线
+        self._recache_curves() # 数据变化时，重新缓存曲线
         self.update()
 
     @Slot()
@@ -409,7 +409,7 @@ class LightweightCurveCanvas(QWidget):
             self.update()
 
     def _drag_point(self, pos: QPointF):
-        """【最终优化】实现水平和垂直方向的完全自由、智能联动的拖拽。"""
+        """实现水平和垂直方向的完全自由、智能联动的拖拽。"""
         data = self.get_curve_data(self.active_curve_type)
         idx = self._dragging_point_index
         if idx is None: return
@@ -424,7 +424,7 @@ class LightweightCurveCanvas(QWidget):
         # 2. 更新当前点的位置
         data[idx] = [int(round(temp)), int(round(speed))]
         
-        # 3. 【核心】实时强制水平和垂直的连锁反应
+        # 3. 实时强制水平和垂直的连锁反应
         self._enforce_temperature_separation_during_drag(data, idx)
         self._enforce_speed_monotonicity_during_drag(data, idx)
         

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 OS级别的工具函数，主要用于Windows特定的操作。
-【最终优化】移除了不可靠的路径辅助函数，逻辑现在更集中和健壮。
+移除了不可靠的路径辅助函数，逻辑现在更集中和健壮。
 """
 
 import sys
@@ -64,5 +64,5 @@ def run_as_admin(executable_path: str, base_dir: str):
         ctypes.windll.user32.MessageBoxW(0, final_error_msg, error_title, 0x10 | 0x1000)
         sys.exit(1)
 
-# 【移除】删除了 get_application_executable_path 和 get_application_script_path_for_task
+# 删除了 get_application_executable_path 和 get_application_script_path_for_task
 # 这两个函数是导致路径问题的根源，所有路径现在都应从 PathManager 获取。

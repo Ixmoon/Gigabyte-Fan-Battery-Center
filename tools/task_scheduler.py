@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 用于与Windows任务计划程序交互以管理应用启动的函数。
-【最终优化】现在完全依赖于从PathManager传入的权威路径，确保了在任何模式下都能创建正确的任务。
+现在完全依赖于从PathManager传入的权威路径，确保了在任何模式下都能创建正确的任务。
 """
 import os
 import sys
@@ -108,7 +108,7 @@ def create_startup_task(paths: PathManager):
     except IOError as e:
         raise Exception(f"读取任务模板文件失败: {e}")
 
-    # 【最终修复】从PathManager获取所有路径信息，不再自行猜测
+    # 从PathManager获取所有路径信息，不再自行猜测
     if paths.is_running_as_script():
         # 脚本模式
         command = sys.executable # python.exe
