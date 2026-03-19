@@ -264,11 +264,19 @@ class MainWindow(QMainWindow):
                         return True, 0
 
             if msg.message == 0x0084: # WM_NCHITTEST
-                pos = self.mapFromGlobal(QPoint(msg.lParam & 0xFFFF, (msg.lParam >> 16) & 0xFFFF))
+                # 修复：使用 Qt 的 QCursor.pos() 自动处理高 DPI 缩放
+                # 不要用 msg.lParam，它在开启缩放的屏幕上返回物理像素，会导致底部控件被误判为窗口边缘
+                global_pos = QCursor.pos()
+                pos = self.mapFromGlobal(global_pos)
                 
                 # 仅在窗口化状态下检查边框用于缩放
                 if not self.isMaximized():
-                    border=8; on_left=pos.x()<border; on_right=pos.x()>self.width()-border; on_top=pos.y()<border; on_bottom=pos.y()>self.height()-border
+                    border = 8
+                    on_left = pos.x() < border
+                    on_right = pos.x() > self.width() - border
+                    on_top = pos.y() < border
+                    on_bottom = pos.y() > self.height() - border
+                    
                     if on_top and on_left: return True, 13
                     if on_top and on_right: return True, 14
                     if on_bottom and on_left: return True, 16
@@ -278,12 +286,24 @@ class MainWindow(QMainWindow):
                     if on_top: return True, 12
                     if on_bottom: return True, 15
                 
+                # 检查标题栏区域
                 if self.title_bar and pos.y() < self.title_bar.height():
-                    child = self.title_bar.childAt(self.title_bar.mapFrom(self, pos))
-                    if isinstance(child, (QPushButton, QComboBox)):
+                    local_pos = self.title_bar.mapFromGlobal(global_pos)
+                    child = self.title_bar.childAt(local_pos)
+                    
+                    # 递归检查，确保下拉框等复杂控件不会被误判为拖拽区
+                    is_interactive = False
+                    current_child = child
+                    while current_child:
+                        if isinstance(current_child, (QPushButton, QComboBox)):
+                            is_interactive = True
+                            break
+                        current_child = current_child.parentWidget()
+                        
+                    if is_interactive:
                         result = super().nativeEvent(event_type, message)
                         return (bool(result[0]), int(result[1])) if isinstance(result, (tuple, list)) and len(result) == 2 else (False, 0)
-                    return True, 2 # HTCAPTION
+                    return True, 2 # HTCAPTION (返回 2 让 Windows 接管标题栏拖拽)
             
             result = super().nativeEvent(event_type, message)
             return (bool(result[0]), int(result[1])) if isinstance(result, (tuple, list)) and len(result) == 2 else (False, 0)
