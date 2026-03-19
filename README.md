@@ -65,6 +65,25 @@ This application is primarily designed for **Gigabyte laptops** that expose fan 
 
 ---
 
+### Advanced Setup: Using Without Gigabyte Control Center
+
+This section is for advanced users who wish to completely uninstall the official Gigabyte Control Center (GCC) but still use this application. The official software is responsible for registering the necessary WMI provider (`acpimof.dll`) with Windows. Without it, this tool cannot communicate with the hardware. The following steps manually register this provider.
+
+**DISCLAIMER: Modifying the Windows Registry is risky and can cause system instability if done incorrectly. It is highly recommended to back up your registry before proceeding.**
+
+1.  **Obtain WMI Provider:** Find the Gigabyte Control Center installer package and extract its contents. Locate the `acpimof.dll` file within the extracted files.
+2.  **Place the DLL:** Copy the `acpimof.dll` file to the `C:\Windows\SysWOW64` directory.
+3.  **Open Registry Editor:** Press `Win + R`, type `regedit`, and press Enter.
+4.  **Navigate to the Key:** In the Registry Editor, navigate to the following path:
+    `Computer\HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\WmiAcpi`
+5.  **Create String Value:** In the right-hand pane, right-click on an empty space, select `New` -> `String Value`.
+6.  **Name the Value:** Name the new value exactly `MofImagePath`.
+7.  **Set the Value Data:** Double-click `MofImagePath` and set its value data to the full path of the DLL: `C:\Windows\SysWOW64\acpimof.dll`.
+8.  **Reboot:** Restart your computer for the changes to take effect.
+9.  **Verify:** After rebooting, run GFBC. If it starts without any WMI initialization errors, the configuration was successful.
+
+---
+
 # 技嘉风扇与电池控制中心
 
 ### 亮点与特性
@@ -129,25 +148,6 @@ GFBC 是一个为技嘉笔记本设计的轻量而强大的工具，提供对风
 -   **高级用户和游戏玩家:** 渴望对系统的散热性能和噪音水平进行精确控制的用户。
 -   **关注电池健康的用户:** 希望主动管理并延长其笔记本电池寿命的用户。
 -   **极简主义者:** 偏爱功能专注、资源友好型工具的用户。
-
----
-
-### Advanced Setup: Using Without Gigabyte Control Center
-
-This section is for advanced users who wish to completely uninstall the official Gigabyte Control Center (GCC) but still use this application. The official software is responsible for registering the necessary WMI provider (`acpimof.dll`) with Windows. Without it, this tool cannot communicate with the hardware. The following steps manually register this provider.
-
-**DISCLAIMER: Modifying the Windows Registry is risky and can cause system instability if done incorrectly. It is highly recommended to back up your registry before proceeding.**
-
-1.  **Obtain WMI Provider:** Find the Gigabyte Control Center installer package and extract its contents. Locate the `acpimof.dll` file within the extracted files.
-2.  **Place the DLL:** Copy the `acpimof.dll` file to the `C:\Windows\SysWOW64` directory.
-3.  **Open Registry Editor:** Press `Win + R`, type `regedit`, and press Enter.
-4.  **Navigate to the Key:** In the Registry Editor, navigate to the following path:
-    `Computer\HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\WmiAcpi`
-5.  **Create String Value:** In the right-hand pane, right-click on an empty space, select `New` -> `String Value`.
-6.  **Name the Value:** Name the new value exactly `MofImagePath`.
-7.  **Set the Value Data:** Double-click `MofImagePath` and set its value data to the full path of the DLL: `C:\Windows\SysWOW64\acpimof.dll`.
-8.  **Reboot:** Restart your computer for the changes to take effect.
-9.  **Verify:** After rebooting, run GFBC. If it starts without any WMI initialization errors, the configuration was successful.
 
 ---
 
