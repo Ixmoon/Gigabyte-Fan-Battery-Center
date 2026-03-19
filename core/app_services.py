@@ -223,15 +223,18 @@ class AppServices(QObject):
 
     @Slot(int)
     def set_battery_charge_threshold(self, threshold: int, force_apply: bool = False):
-        """设置电池充电阈值。"""
+        """设置电池充电阈值，并在之后立即回读以确认状态。"""
         if not force_apply and (not self._current_profile or self.state.get_applied_charge_policy() != CHARGE_POLICY_CUSTOM):
             return
         try:
             self.wmi_interface.execute_method(SET_CHARGE_STOP, Data=float(threshold))
+            # 增加一个短暂的延迟，给硬件和驱动响应时间
+            time.sleep(0.5)
+            # 强制执行一次完整的状态更新，从硬件回读真实值
+            self.perform_full_status_update()
         except WMIError as e:
             print(f"WMI操作在 'set_battery_charge_threshold' 中失败: {e}", file=sys.stderr)
             self.state.set_controller_status_message(tr("wmi_error"))
-
     @Slot()
     def _perform_control_cycle(self):
         """自动温控的核心循环。"""

@@ -49,6 +49,9 @@ class EditableLabel(QWidget):
     def setValue(self, value: int):
         """设置标签的数值。"""
         self.setText(str(value))
+        # 确保隐藏的编辑框中的内容也同步更新
+        if self.line_edit.text() != str(value):
+            self.line_edit.setText(str(value))
 
     def setAlignment(self, alignment: Qt.AlignmentFlag):
         """设置标签和编辑框的对齐方式。"""
