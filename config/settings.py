@@ -153,15 +153,18 @@ STARTUP_ARG_MINIMIZED: str = "--minimized"
 _APP_GUID: str = "{17e0cc04-cddb-4b9b-adcc-5faa4872e054}"
 MUTEX_NAME: str = f"Global\\{APP_INTERNAL_NAME}_Mutex_{_APP_GUID}"
 SHARED_MEM_NAME: str = f"Global\\{APP_INTERNAL_NAME}_SharedMem_{_APP_GUID}"
-SHARED_MEM_SIZE: int = 64
+SHARED_MEM_SIZE: int = 2048
 SHARED_MEM_HWND_OFFSET: int = 0
 SHARED_MEM_HWND_SIZE: int = 32
 SHARED_MEM_COMMAND_OFFSET: int = 32
 SHARED_MEM_COMMAND_SIZE: int = 1
+SHARED_MEM_PAYLOAD_OFFSET: int = 33
+SHARED_MEM_PAYLOAD_SIZE: int = SHARED_MEM_SIZE - SHARED_MEM_PAYLOAD_OFFSET
 COMMAND_NONE: int = 0
 COMMAND_QUIT: int = 1
 COMMAND_RELOAD_AND_SHOW: int = 2
 COMMAND_RELOAD_ONLY: int = 3
+COMMAND_CLI_ACTION: int = 4
 
 # ==============================================================================
 # 杂项

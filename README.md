@@ -54,6 +54,39 @@ GFBC is a lightweight yet powerful utility designed for Gigabyte laptops, offeri
     *   **Left-Click/Double-Click:** Show or hide the main window.
     *   **Right-Click:** Access a context menu to show/hide or quit the application.
 
+### Command Line Automation (Profiles and Battery Policy)
+
+You can launch the EXE with command-line flags to quickly apply a profile and/or battery policy from shortcuts (`.lnk`), Start menu entries, or PowerToys Command Palette.
+
+Supported flags:
+
+- `--profile "<name>"`: Activate a specific profile by name.
+- `--show-mode <show|notify|silent>`:
+  - `show`: apply action and bring window to front.
+  - `notify`: apply action in background and show tray notification.
+  - `silent`: apply action in background without popups.
+- `--charge-policy <bios|custom>`: Set battery charging policy.
+- `--charge-threshold <60-100>`: Optional, only valid with `--charge-policy custom`.
+
+Notes:
+
+- If profile does not exist, the app always shows an error notification.
+- If `--show-mode` is omitted when using action flags, it defaults to `notify`.
+- Existing `--minimized` startup behavior remains supported.
+
+Examples:
+
+- `FanBatteryControl.exe --profile "Gaming" --show-mode notify`
+- `FanBatteryControl.exe --profile "Quiet" --show-mode silent`
+- `FanBatteryControl.exe --charge-policy bios --show-mode notify`
+- `FanBatteryControl.exe --profile "PluggedIn" --charge-policy custom --charge-threshold 80 --show-mode silent`
+
+Power-user shortcut workflow:
+
+1. Create multiple `.lnk` shortcuts with different arguments.
+2. Place them in Start Menu folders.
+3. Launch by name from PowerToys Command Palette for fast profile switching.
+
 ### Scope of Application
 This application is primarily designed for **Gigabyte laptops** that expose fan and battery controls through their WMI interface. While it may work on other brands or models with similar WMI implementations, compatibility is not guaranteed. It is built for **Windows operating systems**.
 

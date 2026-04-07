@@ -10,7 +10,8 @@ import traceback
 import atexit
 import ctypes
 import subprocess
-from typing import Optional
+import argparse
+from typing import Optional, Any, Dict, Tuple
 
 # --- 权威路径确定 ---
 # 这是整个应用中唯一应该确定核心路径的地方。
@@ -53,7 +54,9 @@ except Exception as e:
 from gui.qt import QApplication, QMessageBox, QCoreApplication
 
 from config.settings import (
-    APP_NAME, APP_ORGANIZATION_NAME, APP_INTERNAL_NAME, STARTUP_ARG_MINIMIZED
+    APP_NAME, APP_ORGANIZATION_NAME, APP_INTERNAL_NAME, STARTUP_ARG_MINIMIZED,
+    COMMAND_CLI_ACTION, CHARGE_POLICY_BIOS, CHARGE_POLICY_CUSTOM,
+    MIN_CHARGE_PERCENT, MAX_CHARGE_PERCENT
 )
 from tools.localization import load_translations, tr, set_language, _translations_loaded
 from tools.system_utils import is_admin, run_as_admin
@@ -69,6 +72,38 @@ from gui.main_window import MainWindow
 from emergency_fan_setter import set_emergency_fan_speed
 
 _app_services_for_cleanup: Optional[AppServices] = None
+
+
+def _parse_cli_arguments(argv: list[str]) -> Tuple[argparse.Namespace, Optional[str]]:
+    """解析并验证命令行参数。返回(args, error_message)。"""
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument(STARTUP_ARG_MINIMIZED, action="store_true", dest="minimized")
+    parser.add_argument("--profile", type=str, default=None)
+    parser.add_argument("--show-mode", type=str, choices=["show", "notify", "silent"], default=None)
+    parser.add_argument("--charge-policy", type=str, choices=[CHARGE_POLICY_BIOS, CHARGE_POLICY_CUSTOM], default=None)
+    parser.add_argument("--charge-threshold", type=int, default=None)
+
+    try:
+        args, unknown = parser.parse_known_args(argv)
+    except SystemExit:
+        return argparse.Namespace(), "命令行参数格式无效。"
+
+    if unknown:
+        return args, f"未知命令行参数: {' '.join(unknown)}"
+
+    if args.charge_threshold is not None and args.charge_policy != CHARGE_POLICY_CUSTOM:
+        return args, "--charge-threshold 只能和 --charge-policy custom 一起使用。"
+
+    if args.charge_threshold is not None and not (MIN_CHARGE_PERCENT <= args.charge_threshold <= MAX_CHARGE_PERCENT):
+        return args, f"--charge-threshold 必须在 {MIN_CHARGE_PERCENT}-{MAX_CHARGE_PERCENT} 之间。"
+
+    if args.profile is not None and not args.profile.strip():
+        return args, "--profile 不能为空。"
+
+    if args.show_mode is None and (args.profile is not None or args.charge_policy is not None):
+        args.show_mode = "notify"
+
+    return args, None
 
 # --- 崩溃安全机制 ---
 def _trigger_emergency_fan_setter():
@@ -168,8 +203,23 @@ def main():
     """主应用函数。"""
     global _app_services_for_cleanup
 
+    cli_args, cli_error = _parse_cli_arguments(sys.argv[1:])
+    if cli_error:
+        print(cli_error, file=sys.stderr)
+        sys.exit(2)
+
     sys.excepthook = handle_exception
     atexit.register(perform_cleanup)
+
+    has_cli_action = bool(cli_args.profile or cli_args.charge_policy)
+    cli_payload: Optional[Dict[str, Any]] = None
+    if has_cli_action:
+        cli_payload = {
+            "profile": cli_args.profile,
+            "show_mode": cli_args.show_mode,
+            "charge_policy": cli_args.charge_policy,
+            "charge_threshold": cli_args.charge_threshold
+        }
 
     # --- 初始化核心服务 ---
     # 1. 创建路径管理器，注入所有权威路径
@@ -186,8 +236,13 @@ def main():
             run_as_admin(EXECUTABLE_PATH, BASE_DIR)
             sys.exit(1)
         
-        is_task_launch = STARTUP_ARG_MINIMIZED in sys.argv
-        if not check_single_instance(is_task_launch=is_task_launch):
+        is_task_launch = bool(cli_args.minimized)
+        command_override = COMMAND_CLI_ACTION if has_cli_action else None
+        if not check_single_instance(
+            is_task_launch=is_task_launch,
+            command_override=command_override,
+            payload=cli_payload
+        ):
             print("另一个实例正在运行。已发送命令，本实例将退出。")
             sys.exit(0)
 
@@ -214,13 +269,14 @@ def main():
         profile_manager.load_config()
         set_language(app_state.get_language())
         
-        start_minimized = STARTUP_ARG_MINIMIZED in sys.argv
+        start_minimized = bool(cli_args.minimized) or (has_cli_action and cli_args.show_mode != "show")
         main_window = MainWindow(
             app_services=app_services, 
             state=app_state,
             profile_manager=profile_manager,
             settings_manager=settings_manager,
-            start_minimized=start_minimized
+            start_minimized=start_minimized,
+            startup_cli_payload=cli_payload
         )
 
         if os.name == 'nt':
