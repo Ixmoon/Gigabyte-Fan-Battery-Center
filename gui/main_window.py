@@ -7,7 +7,7 @@
 import sys
 import time
 import os
-from typing import Optional, Any
+from typing import Optional, Any, Dict
 
 from .qt import *
 from .lightweight_curve_canvas import LightweightCurveCanvas as CurveCanvas
@@ -21,19 +21,32 @@ from tools.localization import tr, set_language
 from core.app_services import AppServices
 from core.profile_manager import ProfileManager
 from core.settings_manager import SettingsManager
+from config.settings import (
+    COMMAND_CLI_ACTION, COMMAND_QUIT, COMMAND_RELOAD_AND_SHOW, COMMAND_RELOAD_ONLY,
+    CHARGE_POLICY_BIOS, CHARGE_POLICY_CUSTOM
+)
 
 class MainWindow(QMainWindow):
     """主应用窗口。"""
     gui_tick = Signal()
     window_initialized_signal = Signal(int)
 
-    def __init__(self, app_services: AppServices, state: AppState, profile_manager: ProfileManager, settings_manager: SettingsManager, start_minimized: bool = False):
+    def __init__(
+        self,
+        app_services: AppServices,
+        state: AppState,
+        profile_manager: ProfileManager,
+        settings_manager: SettingsManager,
+        start_minimized: bool = False,
+        startup_cli_payload: Optional[Dict[str, Any]] = None
+    ):
         super().__init__()
         self.app_services = app_services
         self.state = state
         self.profile_manager = profile_manager
         self.settings_manager = settings_manager
         self.start_minimized = start_minimized
+        self.startup_cli_payload = startup_cli_payload or {}
         
         self.tray_icon: Optional[QSystemTrayIcon] = None
         self._is_quitting: bool = False
@@ -61,6 +74,8 @@ class MainWindow(QMainWindow):
             self.show()
 
         self._start_command_poller()
+        if self.startup_cli_payload:
+            QTimer.singleShot(0, lambda: self.execute_cli_payload(self.startup_cli_payload))
 
     def _restore_geometry(self):
         geometry_str = self.state.window_geometry
@@ -202,25 +217,76 @@ class MainWindow(QMainWindow):
         self.gui_update_timer.start()
 
     def _start_command_poller(self):
-        from tools.single_instance import read_command_from_shared_memory, write_command_to_shared_memory, COMMAND_NONE
+        from tools.single_instance import (
+            read_command_from_shared_memory, read_payload_from_shared_memory,
+            write_command_to_shared_memory, clear_payload_in_shared_memory, COMMAND_NONE
+        )
         self.command_poll_timer = QTimer(self)
         self.command_poll_timer.setInterval(500)
         def _on_poll_tick():
             command = read_command_from_shared_memory()
             if command is not None and command != COMMAND_NONE:
+                payload = read_payload_from_shared_memory()
                 write_command_to_shared_memory(COMMAND_NONE)
-                self._handle_command(command)
+                clear_payload_in_shared_memory()
+                self._handle_command(command, payload)
         self.command_poll_timer.timeout.connect(_on_poll_tick)
         self.command_poll_timer.start()
 
-    def _handle_command(self, command: int):
-        from config.settings import COMMAND_QUIT, COMMAND_RELOAD_AND_SHOW, COMMAND_RELOAD_ONLY
+    def _handle_command(self, command: int, payload: Optional[Dict[str, Any]] = None):
+        payload = payload or {}
         if command == COMMAND_QUIT: self._request_quit()
         elif command == COMMAND_RELOAD_AND_SHOW:
             self.profile_manager.reload_and_apply_active_profile()
             self.toggle_window_visibility(force_show=True)
         elif command == COMMAND_RELOAD_ONLY:
             self.profile_manager.reload_and_apply_active_profile()
+        elif command == COMMAND_CLI_ACTION:
+            self.execute_cli_payload(payload)
+
+    def _show_cli_notification(self, title_key: str, message: str, critical: bool = False):
+        if not self.tray_icon:
+            return
+        icon = QSystemTrayIcon.MessageIcon.Critical if critical else QSystemTrayIcon.MessageIcon.Information
+        self.tray_icon.showMessage(tr(title_key), message, icon, 3000)
+
+    def execute_cli_payload(self, payload: Dict[str, Any]):
+        profile_name = payload.get("profile")
+        show_mode = payload.get("show_mode", "notify")
+        charge_policy = payload.get("charge_policy")
+        charge_threshold = payload.get("charge_threshold")
+
+        profile_changed = False
+        if isinstance(profile_name, str) and profile_name.strip():
+            profile_name = profile_name.strip()
+            if profile_name not in self.state.get_profile_names():
+                error_msg = tr("cli_profile_not_found", profile=profile_name)
+                self._show_cli_notification("cli_action_failed_title", error_msg, critical=True)
+                return
+            self.profile_manager.activate_profile(profile_name)
+            profile_changed = True
+
+        active_profile = self.state.get_active_profile()
+        if charge_policy in (CHARGE_POLICY_BIOS, CHARGE_POLICY_CUSTOM) and active_profile:
+            active_profile.set_battery_charge_policy(charge_policy)
+            if charge_policy == CHARGE_POLICY_CUSTOM and isinstance(charge_threshold, int):
+                active_profile.set_battery_charge_threshold(charge_threshold)
+            self.profile_manager.save_config()
+
+        if show_mode == "show":
+            self.toggle_window_visibility(force_show=True)
+            return
+
+        if show_mode == "notify":
+            if profile_changed and charge_policy:
+                msg = tr("cli_profile_and_policy_applied", profile=profile_name, policy=charge_policy)
+            elif profile_changed:
+                msg = tr("cli_profile_applied", profile=profile_name)
+            elif charge_policy:
+                msg = tr("cli_policy_applied", policy=charge_policy)
+            else:
+                msg = tr("cli_no_action")
+            self._show_cli_notification("cli_action_done_title", msg, critical=False)
 
     def showEvent(self, event: QShowEvent):
         if not self._is_initialized:

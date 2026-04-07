@@ -96,6 +96,13 @@ DEFAULT_ENGLISH_TRANSLATIONS: Dict[str, str] = {
     "unhandled_exception_title": "Unhandled Exception",
     "single_instance_error_title": "Application Already Running",
     "single_instance_error_msg": "Another instance of {app_name} is already running.\nActivating the existing window.",
+    "cli_action_done_title": "Command Applied",
+    "cli_action_failed_title": "Command Failed",
+    "cli_profile_not_found": "Profile '{profile}' was not found. Please create it first.",
+    "cli_profile_applied": "Activated profile '{profile}'.",
+    "cli_policy_applied": "Applied charge policy '{policy}'.",
+    "cli_profile_and_policy_applied": "Activated '{profile}' and applied charge policy '{policy}'.",
+    "cli_no_action": "No command action was provided.",
 
     # 托盘菜单
     "tray_menu_show_hide": "Show / Hide",
@@ -188,6 +195,13 @@ DEFAULT_CHINESE_TRANSLATIONS: Dict[str, str] = {
     "unhandled_exception_title": "未处理的异常",
     "single_instance_error_title": "应用程序已在运行",
     "single_instance_error_msg": "{app_name} 的另一个实例已在运行。\n正在激活现有窗口。",
+    "cli_action_done_title": "命令已应用",
+    "cli_action_failed_title": "命令失败",
+    "cli_profile_not_found": "未找到配置文件 '{profile}'。请先创建它。",
+    "cli_profile_applied": "已激活配置文件 '{profile}'。",
+    "cli_policy_applied": "已应用充电策略 '{policy}'。",
+    "cli_profile_and_policy_applied": "已激活 '{profile}' 并应用充电策略 '{policy}'。",
+    "cli_no_action": "未提供可执行的命令动作。",
 
     # 托盘菜单
     "tray_menu_show_hide": "显示 / 隐藏",
