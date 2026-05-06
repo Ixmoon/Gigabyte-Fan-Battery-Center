@@ -7,13 +7,15 @@
 import sys
 import os
 import ctypes
-from typing import Optional
+import json
+from typing import Optional, Any, Dict
 
 # 从设置导入名称、大小、应用名称和命令
 from config.settings import (
     MUTEX_NAME, SHARED_MEM_NAME, SHARED_MEM_SIZE, APP_NAME,
     SHARED_MEM_HWND_OFFSET, SHARED_MEM_HWND_SIZE, SHARED_MEM_COMMAND_OFFSET,
-    COMMAND_NONE, COMMAND_RELOAD_AND_SHOW, COMMAND_RELOAD_ONLY
+    SHARED_MEM_PAYLOAD_OFFSET, SHARED_MEM_PAYLOAD_SIZE, COMMAND_NONE,
+    COMMAND_RELOAD_AND_SHOW, COMMAND_RELOAD_ONLY
 )
 # 从本地化导入消息
 from .localization import tr
@@ -140,6 +142,23 @@ def write_command_to_shared_memory(command: int):
     except Exception as e:
         print(f"写入命令到共享内存时出错: {e}", file=sys.stderr)
 
+def write_payload_to_shared_memory(payload: Dict[str, Any]):
+    """将JSON载荷写入共享内存的指定位置。"""
+    global _shared_mem_view
+    if not _single_instance_check_enabled or not _shared_mem_view:
+        return
+    try:
+        payload_str = json.dumps(payload, ensure_ascii=False)
+        payload_bytes = payload_str.encode("utf-8")
+        if len(payload_bytes) >= SHARED_MEM_PAYLOAD_SIZE:
+            raise ValueError("命令载荷过大，无法写入共享内存")
+
+        ctypes.memset(_shared_mem_view + SHARED_MEM_PAYLOAD_OFFSET, 0, SHARED_MEM_PAYLOAD_SIZE)
+        payload_buffer = (ctypes.c_char * SHARED_MEM_PAYLOAD_SIZE).from_address(_shared_mem_view + SHARED_MEM_PAYLOAD_OFFSET)
+        payload_buffer.value = payload_bytes
+    except Exception as e:
+        print(f"写入载荷到共享内存时出错: {e}", file=sys.stderr)
+
 def read_command_from_shared_memory() -> Optional[int]:
     """从共享内存的指定位置读取命令字节。"""
     global _shared_mem_view
@@ -153,6 +172,32 @@ def read_command_from_shared_memory() -> Optional[int]:
         print(f"从共享内存读取命令时出错: {e}", file=sys.stderr)
         return None
 
+def read_payload_from_shared_memory() -> Dict[str, Any]:
+    """从共享内存读取JSON载荷。"""
+    global _shared_mem_view
+    if not _single_instance_check_enabled or not _shared_mem_view:
+        return {}
+    try:
+        payload_buffer = (ctypes.c_char * SHARED_MEM_PAYLOAD_SIZE).from_address(_shared_mem_view + SHARED_MEM_PAYLOAD_OFFSET)
+        payload_str = payload_buffer.value.decode("utf-8").strip("\x00").strip()
+        if not payload_str:
+            return {}
+        payload = json.loads(payload_str)
+        return payload if isinstance(payload, dict) else {}
+    except Exception as e:
+        print(f"从共享内存读取载荷时出错: {e}", file=sys.stderr)
+        return {}
+
+def clear_payload_in_shared_memory():
+    """清空共享内存中的载荷区域。"""
+    global _shared_mem_view
+    if not _single_instance_check_enabled or not _shared_mem_view:
+        return
+    try:
+        ctypes.memset(_shared_mem_view + SHARED_MEM_PAYLOAD_OFFSET, 0, SHARED_MEM_PAYLOAD_SIZE)
+    except Exception as e:
+        print(f"清空共享内存载荷时出错: {e}", file=sys.stderr)
+
 def close_shared_memory():
     """取消映射并关闭共享内存句柄。"""
     global _shared_mem_view, _shared_mem_handle
@@ -165,7 +210,11 @@ def close_shared_memory():
 
 # --- 单实例检查 ---
 
-def check_single_instance(is_task_launch: bool = False) -> bool:
+def check_single_instance(
+    is_task_launch: bool = False,
+    command_override: Optional[int] = None,
+    payload: Optional[Dict[str, Any]] = None
+) -> bool:
     """
     使用系统范围的互斥锁检查另一个实例。
     如果另一个实例存在，此函数会向其发送命令并返回False。
@@ -184,8 +233,10 @@ def check_single_instance(is_task_launch: bool = False) -> bool:
             CloseHandle(_mutex_handle) # 释放我们尝试创建但失败的句柄
         
         # 根据启动类型决定发送哪个命令
-        command_to_send = COMMAND_RELOAD_ONLY if is_task_launch else COMMAND_RELOAD_AND_SHOW
-        _send_command_and_exit(command_to_send)
+        command_to_send = command_override if command_override is not None else (
+            COMMAND_RELOAD_ONLY if is_task_launch else COMMAND_RELOAD_AND_SHOW
+        )
+        _send_command_and_exit(command_to_send, payload=payload)
         return False # 告知主程序退出
 
     if not _mutex_handle:
@@ -197,7 +248,7 @@ def check_single_instance(is_task_launch: bool = False) -> bool:
     _create_or_open_shared_memory()
     return True
 
-def _send_command_and_exit(command: int):
+def _send_command_and_exit(command: int, payload: Optional[Dict[str, Any]] = None):
     """
     连接到现有实例的共享内存，发送命令，（如果需要）激活窗口，然后退出。
     """
@@ -208,6 +259,7 @@ def _send_command_and_exit(command: int):
             if command == COMMAND_RELOAD_AND_SHOW:
                 _bring_window_to_front(hwnd)
         
+        write_payload_to_shared_memory(payload or {})
         write_command_to_shared_memory(command)
         close_shared_memory()
     else:
